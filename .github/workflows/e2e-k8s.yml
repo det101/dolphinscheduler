@@ -94,65 +94,94 @@ jobs:
           kind create cluster --name dolphinscheduler --image ${kind_node_image}
           kubectl version
           kubectl get all --all-namespaces
-      - name: Load images
+          
+      - name: Build dolphinscheduler images with MySQL driver
         run: |
+          wget -O mysql-connector-java-8.0.16.jar https://repo1.maven.org/maven2/mysql/mysql-connector-java/8.0.16/mysql-connector-java-8.0.16.jar
           components=("master" "worker" "api" "tools" "alert-server")
+          registry="apache"
           for component in "${components[@]}"; do
-            kind load docker-image apache/dolphinscheduler-${component}:ci --name dolphinscheduler
+            if [ "$component" = "tools" ]; then
+                mkdir -p dolphinscheduler-tools
+                cp mysql-connector-java-8.0.16.jar dolphinscheduler-tools/
+                echo -e "FROM $registry/dolphinscheduler-tools:latest\nCOPY ../mysql-connector-java-8.0.16.jar /opt/dolphinscheduler/tools/libs/" > dolphinscheduler-tools/Dockerfile
+                docker build -t $registry/dolphinscheduler-tools:ci dolphinscheduler-tools
+            else
+                mkdir -p dolphinscheduler-$component
+                cp mysql-connector-java-8.0.16.jar dolphinscheduler-$component/
+                echo -e "FROM $registry/dolphinscheduler-$component:latest\nCOPY ../mysql-connector-java-8.0.16.jar /opt/dolphinscheduler/libs/" > dolphinscheduler-$component/Dockerfile
+                docker build -t $registry/dolphinscheduler-$component:ci dolphinscheduler-$component
+            fi
+            kind load docker-image apache/dolphinscheduler-$component:ci --name dolphinscheduler
           done
-      - name: Helm install dolphinscheduler
+      - name: Deploy standalone MySQL on K8s
         working-directory: ${{ github.workspace }}/deploy/kubernetes/dolphinscheduler
         run: |
-          # install helm
-          curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+          # Create namespace first
+          kubectl create namespace dolphinscheduler
 
-          # install ds chart via helm
+          # Apply the manifests to deploy MySQL
+          kubectl apply -n dolphinscheduler -f mysql-k8s.yaml 
+
+          # Wait for MySQL to be ready before proceeding
+          echo "Waiting for MySQL to be ready..."
+          kubectl wait --for=condition=available --timeout=300s deployment/mysql -n dolphinscheduler
+          
+          kubectl get pods -n dolphinscheduler
+          kubectl get svc -n dolphinscheduler
+          echo "Waiting for MySQL service to be ready..."
+          MYSQL_POD=$(kubectl get pods -n dolphinscheduler -l app=mysql -o jsonpath="{.items[0].metadata.name}")
+          for i in {1..30}; do
+            if kubectl exec "$MYSQL_POD" -n dolphinscheduler -- mysql -uroot -proot -e "SELECT 1"; then
+              echo "MySQL is ready!"
+              break
+            else
+              echo "Waiting for MySQL to be ready... ($i/30)"
+              sleep 5
+            fi
+          done
+
+          if [ "$i" -eq 30 ]; then
+            echo "MySQL did not become ready within the timeout period."
+            kubectl describe pod "$MYSQL_POD" -n dolphinscheduler
+            echo "pod logs"
+            kubectl logs "$MYSQL_POD" -n dolphinscheduler
+            exit 1
+          fi
+
+      - name: Helm upgrade dolphinscheduler with mysql config
+        working-directory: ${{ github.workspace }}/deploy/kubernetes/dolphinscheduler
+        run: |
           helm repo add bitnami https://charts.bitnami.com/bitnami
           helm dependency update .
-          helm upgrade --install --create-namespace -n dolphinscheduler dolphinscheduler . -f - <<EOF
-          image:
-            registry: apache
-            tag: ci
-          master:
-            replicas: 1
-            livenessProbe:
-              initialDelaySeconds: 120
-            readinessProbe:
-              initialDelaySeconds: 120
-          worker:
-            replicas: 1
-            livenessProbe:
-              initialDelaySeconds: 120
-            readinessProbe:
-              initialDelaySeconds: 120
-          alert:
-            livenessProbe:
-              initialDelaySeconds: 120
-            readinessProbe:
-              initialDelaySeconds: 120
-          api:
-            livenessProbe:
-              initialDelaySeconds: 120
-            readinessProbe:
-              initialDelaySeconds: 120
-          EOF
-
-      - name: Wait for pods
+          helm upgrade --install --debug --create-namespace -n dolphinscheduler dolphinscheduler . \
+            --set image.tag=ci \
+            --set postgresql.enabled=false \
+            --set externalDatabase.enabled=true \
+            --set externalDatabase.driverClassName="com.mysql.cj.jdbc.Driver" \
+            --set externalDatabase.type="mysql" \
+            --set externalDatabase.host="mysql" \
+            --set externalDatabase.port=3306 \
+            --set externalDatabase.user="root" \
+            --set externalDatabase.password="root" \
+            --set externalDatabase.database="dolphinscheduler" \
+            --set master.replicas=1 \
+            --set worker.replicas=1 
+          
+      - name: Helm upgrade dolphinscheduler with pgsql config
+        working-directory: ${{ github.workspace }}/deploy/kubernetes/dolphinscheduler
         run: |
-          JSONPATH='{range .items[*]}{@.metadata.name}:{range @.status.conditions[*]}{@.type}={@.status};{end}{end}'; 
-          components=("master" "worker" "api" "alert")
-          for component in "${components[@]}"; do
-            until kubectl -n dolphinscheduler get pods -l app.kubernetes.io/component=${component} -o jsonpath="$JSONPATH" 2>&1 | grep -q "Ready=True"; do
-              echo "waiting for dolphinscheduler ${component} to be available"
-              sleep 10
-              kubectl get pods --all-namespaces
-              kubectl get events --all-namespaces
-              for pod in $(kubectl get pods -n dolphinscheduler -o jsonpath='{.items[*].metadata.name}'); do
-                echo "logs for pod $pod:"
-                kubectl logs --tail=1000 -n dolphinscheduler $pod
-              done
-            done
-          done
+          ls mysql-k8s.yaml
+          kubectl delete -f mysql-k8s.yaml -n dolphinscheduler
+          helm uninstall dolphinscheduler -n dolphinschedule
+          kubectl delete namespace dolphinscheduler
+          helm upgrade --install --debug --create-namespace -n dolphinscheduler dolphinscheduler . \
+            --set image.tag=ci \
+            --set postgresql.enabled=true \
+            --set externalDatabase.enabled=true \
+            --set master.replicas=1 \
+            --set worker.replicas=1 
+
   result:
     name: E2E-K8S-Result
     runs-on: ubuntu-latest
