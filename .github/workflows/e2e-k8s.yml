@@ -152,6 +152,9 @@ jobs:
       - name: Helm upgrade dolphinscheduler with mysql config
         working-directory: ${{ github.workspace }}/deploy/kubernetes/dolphinscheduler
         run: |
+          # install helm
+          curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+          
           helm repo add bitnami https://charts.bitnami.com/bitnami
           helm dependency update .
           helm upgrade --install --debug --create-namespace -n dolphinscheduler dolphinscheduler . \
