@@ -45,11 +45,14 @@ jobs:
             not-ignore:
               - '!(docs/**)'
   e2e-k8s:
-    name: E2E-K8S-Execute
+    name: E2E-K8S-Execute (${{ matrix.db }})
     needs: paths-filter
     if: ${{ (needs.paths-filter.outputs.not-ignore == 'true') || (github.event_name == 'push') }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
+    strategy:
+      matrix:
+        db: [mysql, postgresql]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -114,22 +117,14 @@ jobs:
             fi
             kind load docker-image apache/dolphinscheduler-$component:ci --name dolphinscheduler
           done
-      - name: Deploy standalone MySQL on K8s
+      - name: Deploy standalone MySQL on K8s (only for mysql)
+        if: matrix.db == 'mysql'
         working-directory: ${{ github.workspace }}/deploy/kubernetes/dolphinscheduler
         run: |
-          # Create namespace first
           kubectl create namespace dolphinscheduler
-
-          # Apply the manifests to deploy MySQL
           kubectl apply -n dolphinscheduler -f mysql-k8s.yaml 
-
-          # Wait for MySQL to be ready before proceeding
           echo "Waiting for MySQL to be ready..."
           kubectl wait --for=condition=available --timeout=300s deployment/mysql -n dolphinscheduler
-          
-          kubectl get pods -n dolphinscheduler
-          kubectl get svc -n dolphinscheduler
-          echo "Waiting for MySQL service to be ready..."
           MYSQL_POD=$(kubectl get pods -n dolphinscheduler -l app=mysql -o jsonpath="{.items[0].metadata.name}")
           for i in {1..30}; do
             if kubectl exec "$MYSQL_POD" -n dolphinscheduler -- mysql -uroot -proot -e "SELECT 1"; then
@@ -140,21 +135,18 @@ jobs:
               sleep 5
             fi
           done
-
           if [ "$i" -eq 30 ]; then
             echo "MySQL did not become ready within the timeout period."
             kubectl describe pod "$MYSQL_POD" -n dolphinscheduler
-            echo "pod logs"
             kubectl logs "$MYSQL_POD" -n dolphinscheduler
             exit 1
           fi
 
       - name: Helm upgrade dolphinscheduler with mysql config
+        if: matrix.db == 'mysql'
         working-directory: ${{ github.workspace }}/deploy/kubernetes/dolphinscheduler
         run: |
-          # install helm
           curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
-          
           helm repo add bitnami https://charts.bitnami.com/bitnami
           helm dependency update .
           helm upgrade --install --debug --create-namespace -n dolphinscheduler dolphinscheduler . \
@@ -170,14 +162,14 @@ jobs:
             --set externalDatabase.database="dolphinscheduler" \
             --set master.replicas=1 \
             --set worker.replicas=1 
-          
+
       - name: Helm upgrade dolphinscheduler with pgsql config
+        if: matrix.db == 'postgresql'
         working-directory: ${{ github.workspace }}/deploy/kubernetes/dolphinscheduler
         run: |
-          ls mysql-k8s.yaml
-          kubectl delete -f mysql-k8s.yaml -n dolphinscheduler
-          helm uninstall dolphinscheduler -n dolphinschedule
-          kubectl delete namespace dolphinscheduler
+          curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+          helm repo add bitnami https://charts.bitnami.com/bitnami
+          helm dependency update .
           helm upgrade --install --debug --create-namespace -n dolphinscheduler dolphinscheduler . \
             --set image.tag=ci \
             --set postgresql.enabled=true \
