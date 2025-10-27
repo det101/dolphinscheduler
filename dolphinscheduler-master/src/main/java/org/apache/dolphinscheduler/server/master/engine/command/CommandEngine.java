@@ -130,10 +130,11 @@ public class CommandEngine extends BaseDaemonThread implements AutoCloseable {
 
                 List<CompletableFuture<Void>> allCompleteFutures = new ArrayList<>();
                 for (Command command : commands) {
-                    CompletableFuture<Void> completableFuture = bootstrapCommand(command)
+                    CompletableFuture<Void> completableFuture = bootstrapCommand(command, command.getWorkflowInstanceId())
                             .thenAccept(this::bootstrapWorkflowExecutionRunnable)
                             .thenAccept((unused) -> bootstrapSuccess(command))
-                            .exceptionally(throwable -> bootstrapError(command, throwable));
+                            .exceptionally(throwable -> bootstrapError(command, throwable))
+                            .whenComplete((result, throwable) -> LogUtils.removeWorkflowInstanceIdMDC());
                     allCompleteFutures.add(completableFuture);
                 }
                 CompletableFuture.allOf(allCompleteFutures.toArray(new CompletableFuture[0])).join();
@@ -149,16 +150,12 @@ public class CommandEngine extends BaseDaemonThread implements AutoCloseable {
         }
     }
 
-    private CompletableFuture<IWorkflowExecutionRunnable> bootstrapCommand(Command command) {
+    private CompletableFuture<IWorkflowExecutionRunnable> bootstrapCommand(Command command, int workflowInstanceId) {
         return supplyAsync(() -> {
-            LogUtils.setWorkflowInstanceIdMDC(command.getWorkflowInstanceId());
-            try {
-                IWorkflowExecutionRunnable result =
-                        workflowExecutionRunnableFactory.createWorkflowExecuteRunnable(command);
-                return result;
-            } finally {
-                LogUtils.removeWorkflowInstanceIdMDC();
-            }
+            LogUtils.setWorkflowInstanceIdMDC(workflowInstanceId);
+            IWorkflowExecutionRunnable result =
+                    workflowExecutionRunnableFactory.createWorkflowExecuteRunnable(command);
+            return result;
         }, commandHandleThreadPool);
     }
 
@@ -166,51 +163,35 @@ public class CommandEngine extends BaseDaemonThread implements AutoCloseable {
         final WorkflowInstance workflowInstance =
                 workflowExecutionRunnable.getWorkflowExecuteContext().getWorkflowInstance();
 
-        LogUtils.setWorkflowInstanceIdMDC(workflowInstance.getId());
-        try {
-            if (workflowInstance.getState() == WorkflowExecutionStatus.SERIAL_WAIT) {
-                log.info("The workflow {} state is: {} will not be trigger now",
-                        workflowInstance.getName(),
-                        workflowInstance.getState());
-                return CompletableFuture.completedFuture(null);
-            }
-
-            workflowRepository.put(workflowExecutionRunnable);
-            workflowEventBusCoordinator.registerWorkflowEventBus(workflowExecutionRunnable);
-            workflowExecutionRunnable.getWorkflowEventBus()
-                    .publish(WorkflowStartLifecycleEvent.of(workflowExecutionRunnable));
+        if (workflowInstance.getState() == WorkflowExecutionStatus.SERIAL_WAIT) {
+            log.info("The workflow {} state is: {} will not be trigger now",
+                    workflowInstance.getName(),
+                    workflowInstance.getState());
             return CompletableFuture.completedFuture(null);
-        } finally {
-            LogUtils.removeWorkflowInstanceIdMDC();
         }
+
+        workflowRepository.put(workflowExecutionRunnable);
+        workflowEventBusCoordinator.registerWorkflowEventBus(workflowExecutionRunnable);
+        workflowExecutionRunnable.getWorkflowEventBus()
+                .publish(WorkflowStartLifecycleEvent.of(workflowExecutionRunnable));
+        return CompletableFuture.completedFuture(null);
     }
 
-    private CompletableFuture<Void> bootstrapSuccess(Command command) {
-        LogUtils.setWorkflowInstanceIdMDC(command.getWorkflowInstanceId());
-        try {
-            log.info("Success bootstrap command {}", JSONUtils.toPrettyJsonString(command));
-            MasterServerMetrics.incMasterConsumeCommand(1);
-            return CompletableFuture.completedFuture(null);
-        } finally {
-            LogUtils.removeWorkflowInstanceIdMDC();
-        }
+    private void bootstrapSuccess(Command command) {
+        log.info("Success bootstrap command {}", JSONUtils.toPrettyJsonString(command));
+        MasterServerMetrics.incMasterConsumeCommand(1);
     }
 
     private Void bootstrapError(Command command, Throwable throwable) {
-        LogUtils.setWorkflowInstanceIdMDC(command.getWorkflowInstanceId());
-        try {
-            if (throwable instanceof CommandDuplicateHandleException) {
-                log.warn("Handle command failed, the command: {} has been handled by other master",
-                        command,
-                        throwable);
-                return null;
-            }
-            log.error("Failed bootstrap command {} ", JSONUtils.toPrettyJsonString(command), throwable);
-            commandService.moveToErrorCommand(command, ExceptionUtils.getStackTrace(throwable));
+        if (throwable instanceof CommandDuplicateHandleException) {
+            log.warn("Handle command failed, the command: {} has been handled by other master",
+                    command,
+                    throwable);
             return null;
-        } finally {
-            LogUtils.removeWorkflowInstanceIdMDC();
         }
+        log.error("Failed bootstrap command {} ", JSONUtils.toPrettyJsonString(command), throwable);
+        commandService.moveToErrorCommand(command, ExceptionUtils.getStackTrace(throwable));
+        return null;
     }
 
 }
