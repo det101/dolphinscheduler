@@ -22,13 +22,11 @@ import org.apache.dolphinscheduler.api.service.BackfillDependentWorkflowService;
 import org.apache.dolphinscheduler.api.validator.workflow.BackfillWorkflowDTO;
 import org.apache.dolphinscheduler.common.enums.ComplementDependentMode;
 import org.apache.dolphinscheduler.common.enums.ExecutionOrder;
-import org.apache.dolphinscheduler.common.enums.ReleaseState;
 import org.apache.dolphinscheduler.common.enums.RunMode;
 import org.apache.dolphinscheduler.common.model.Server;
 import org.apache.dolphinscheduler.common.utils.DateUtils;
 import org.apache.dolphinscheduler.dao.entity.DependentWorkflowDefinition;
 import org.apache.dolphinscheduler.dao.entity.WorkflowDefinition;
-import org.apache.dolphinscheduler.dao.repository.WorkflowDefinitionDao;
 import org.apache.dolphinscheduler.extract.base.client.Clients;
 import org.apache.dolphinscheduler.extract.master.IWorkflowControlClient;
 import org.apache.dolphinscheduler.extract.master.transportor.workflow.WorkflowBackfillTriggerRequest;
@@ -39,6 +37,7 @@ import org.apache.dolphinscheduler.registry.api.enums.RegistryNodeType;
 import java.time.ZonedDateTime;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 import lombok.extern.slf4j.Slf4j;
@@ -57,9 +56,6 @@ public class BackfillWorkflowExecutorDelegate implements IExecutorDelegate<Backf
 
     @Autowired
     private BackfillDependentWorkflowService backfillDependentWorkflowService;
-
-    @Autowired
-    private WorkflowDefinitionDao workflowDefinitionDao;
 
     @Override
     public List<Integer> execute(final BackfillWorkflowDTO backfillWorkflowDTO) {
@@ -151,7 +147,7 @@ public class BackfillWorkflowExecutorDelegate implements IExecutorDelegate<Backf
     /**
      * Trigger backfill for dependent workflows
      * This method finds all downstream dependent workflows and triggers backfill for each of them
-     * with the same backfill time list
+     * with calculated backfill dates based on dependency configuration
      *
      * @param backfillWorkflowDTO the backfill workflow DTO
      * @param backfillTimeList the backfill time list
@@ -161,15 +157,12 @@ public class BackfillWorkflowExecutorDelegate implements IExecutorDelegate<Backf
         final WorkflowDefinition workflowDefinition = backfillWorkflowDTO.getWorkflowDefinition();
         final BackfillWorkflowDTO.BackfillParamsDTO backfillParams = backfillWorkflowDTO.getBackfillParams();
 
-        // Get allLevelDependent parameter
-        boolean allLevelDependent = backfillParams.isAllLevelDependent();
-
-        // Get dependent workflow definitions list (no cycle matching required)
+        // Get dependent workflow definitions list
         List<DependentWorkflowDefinition> dependentWorkflowDefinitionList =
                 backfillDependentWorkflowService.getComplementDependentDefinitionList(
                         workflowDefinition.getCode(),
                         backfillWorkflowDTO.getWorkerGroup(),
-                        allLevelDependent);
+                        backfillParams.isAllLevelDependent());
 
         if (dependentWorkflowDefinitionList.isEmpty()) {
             log.info("No dependent workflows found for workflow definition code: {}.",
@@ -180,24 +173,36 @@ public class BackfillWorkflowExecutorDelegate implements IExecutorDelegate<Backf
         log.info("Found {} dependent workflows for workflow definition code: {}, will trigger backfill for each.",
                 dependentWorkflowDefinitionList.size(), workflowDefinition.getCode());
 
-        // Trigger backfill for each dependent workflow
+        // Batch query and validate dependent workflows (data access and validation logic in Service layer)
+        Map<Long, WorkflowDefinition> dependentWorkflowMap =
+                backfillDependentWorkflowService.batchQueryAndValidateDependentWorkflows(
+                        dependentWorkflowDefinitionList);
+
+        // Pre-fetch master server once to avoid repeated lookups
+        final Server masterServer = registryClient.getRandomServer(RegistryNodeType.MASTER).orElse(null);
+        if (masterServer == null) {
+            log.error("No master server available, cannot trigger backfill for dependent workflows");
+            return;
+        }
+
+        // Process each dependent workflow
         for (DependentWorkflowDefinition dependentWorkflowDefinition : dependentWorkflowDefinitionList) {
             try {
-                // Calculate backfill dates for dependent workflow based on dependency cycle and dateValue
-                List<String> dependentBackfillDates = backfillDependentWorkflowService.calculateDependentBackfillDates(
-                        workflowDefinition.getCode(),
-                        backfillTimeList,
-                        dependentWorkflowDefinition);
+                // Prepare backfill dates (validation and calculation logic in Service layer)
+                List<String> dependentBackfillDates =
+                        backfillDependentWorkflowService.prepareDependentWorkflowBackfillDates(
+                                workflowDefinition.getCode(),
+                                backfillTimeList,
+                                dependentWorkflowDefinition,
+                                dependentWorkflowMap.get(dependentWorkflowDefinition.getWorkflowDefinitionCode()));
 
                 if (dependentBackfillDates.isEmpty()) {
-                    log.info(
-                            "No valid backfill dates calculated for dependent workflow definition code: {}, skip triggering.",
-                            dependentWorkflowDefinition.getWorkflowDefinitionCode());
                     continue;
                 }
 
+                // Trigger backfill (only API call logic remains in Executor layer)
                 triggerDependentWorkflowBackfill(backfillWorkflowDTO, dependentWorkflowDefinition,
-                        dependentBackfillDates);
+                        dependentBackfillDates, masterServer);
             } catch (Exception e) {
                 log.error("Failed to trigger backfill for dependent workflow definition code: {}, error: {}",
                         dependentWorkflowDefinition.getWorkflowDefinitionCode(), e.getMessage(), e);
@@ -211,56 +216,20 @@ public class BackfillWorkflowExecutorDelegate implements IExecutorDelegate<Backf
      */
     private void triggerDependentWorkflowBackfill(final BackfillWorkflowDTO originalBackfillDTO,
                                                   final DependentWorkflowDefinition dependentWorkflowDefinition,
-                                                  final List<String> backfillTimeList) {
-        // Check if the dependent workflow is online
-        long dependentWorkflowCode = dependentWorkflowDefinition.getWorkflowDefinitionCode();
-        WorkflowDefinition dependentWorkflow = workflowDefinitionDao.queryByCode(dependentWorkflowCode).orElse(null);
-        if (dependentWorkflow == null) {
-            log.warn("Dependent workflow definition not found, workflowDefinitionCode: {}, skip triggering backfill.",
-                    dependentWorkflowCode);
-            return;
-        }
+                                                  final List<String> backfillTimeList,
+                                                  final Server masterServer) {
+        // Build backfill request using service layer
+        final WorkflowBackfillTriggerRequest dependentBackfillRequest =
+                backfillDependentWorkflowService.buildDependentBackfillRequest(
+                        originalBackfillDTO, dependentWorkflowDefinition, backfillTimeList);
 
-        if (!ReleaseState.ONLINE.equals(dependentWorkflow.getReleaseState())) {
-            log.warn(
-                    "Dependent workflow definition is not online, workflowDefinitionCode: {}, releaseState: {}, skip triggering backfill.",
-                    dependentWorkflowCode, dependentWorkflow.getReleaseState());
-            return;
-        }
-
-        final Server masterServer = registryClient.getRandomServer(RegistryNodeType.MASTER).orElse(null);
-        if (masterServer == null) {
-            throw new ServiceException("no master server available");
-        }
-
-        // Build backfill request for dependent workflow
-        final WorkflowBackfillTriggerRequest dependentBackfillRequest = WorkflowBackfillTriggerRequest.builder()
-                .userId(originalBackfillDTO.getLoginUser().getId())
-                .backfillTimeList(backfillTimeList)
-                .workflowCode(dependentWorkflowDefinition.getWorkflowDefinitionCode())
-                .workflowVersion(dependentWorkflowDefinition.getWorkflowDefinitionVersion())
-                .startNodes(dependentWorkflowDefinition.getTaskDefinitionCode() != 0
-                        ? Lists.newArrayList(dependentWorkflowDefinition.getTaskDefinitionCode())
-                        : null)
-                .failureStrategy(originalBackfillDTO.getFailureStrategy())
-                .taskDependType(originalBackfillDTO.getTaskDependType())
-                .warningType(originalBackfillDTO.getWarningType())
-                .warningGroupId(originalBackfillDTO.getWarningGroupId())
-                .workflowInstancePriority(originalBackfillDTO.getWorkflowInstancePriority())
-                .workerGroup(dependentWorkflowDefinition.getWorkerGroup() != null
-                        ? dependentWorkflowDefinition.getWorkerGroup()
-                        : originalBackfillDTO.getWorkerGroup())
-                .tenantCode(originalBackfillDTO.getTenantCode())
-                .environmentCode(originalBackfillDTO.getEnvironmentCode())
-                .startParamList(originalBackfillDTO.getStartParamList())
-                .dryRun(originalBackfillDTO.getDryRun())
-                .build();
-
+        // Call master API to trigger backfill
         final WorkflowBackfillTriggerResponse dependentBackfillResponse = Clients
                 .withService(IWorkflowControlClient.class)
                 .withHost(masterServer.getHost() + ":" + masterServer.getPort())
                 .backfillTriggerWorkflow(dependentBackfillRequest);
 
+        // Log result
         if (!dependentBackfillResponse.isSuccess()) {
             log.warn("Failed to trigger backfill for dependent workflow definition code: {}, message: {}",
                     dependentWorkflowDefinition.getWorkflowDefinitionCode(),

@@ -20,8 +20,13 @@ package org.apache.dolphinscheduler.api.service.impl;
 import org.apache.dolphinscheduler.api.service.BackfillDependentWorkflowService;
 import org.apache.dolphinscheduler.api.service.WorkerGroupService;
 import org.apache.dolphinscheduler.api.service.WorkflowLineageService;
+import org.apache.dolphinscheduler.api.validator.workflow.BackfillWorkflowDTO;
+import org.apache.dolphinscheduler.common.enums.ReleaseState;
 import org.apache.dolphinscheduler.common.utils.DateUtils;
 import org.apache.dolphinscheduler.dao.entity.DependentWorkflowDefinition;
+import org.apache.dolphinscheduler.dao.entity.WorkflowDefinition;
+import org.apache.dolphinscheduler.dao.repository.WorkflowDefinitionDao;
+import org.apache.dolphinscheduler.extract.master.transportor.workflow.WorkflowBackfillTriggerRequest;
 import org.apache.dolphinscheduler.plugin.task.api.model.DateInterval;
 import org.apache.dolphinscheduler.plugin.task.api.model.DependentItem;
 import org.apache.dolphinscheduler.plugin.task.api.utils.DependentUtils;
@@ -39,6 +44,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import com.google.common.collect.Lists;
+
 @Slf4j
 @Service
 public class BackfillDependentWorkflowServiceImpl implements BackfillDependentWorkflowService {
@@ -48,6 +55,9 @@ public class BackfillDependentWorkflowServiceImpl implements BackfillDependentWo
 
     @Autowired
     private WorkerGroupService workerGroupService;
+
+    @Autowired
+    private WorkflowDefinitionDao workflowDefinitionDao;
 
     @Override
     public List<DependentWorkflowDefinition> getComplementDependentDefinitionList(
@@ -245,5 +255,72 @@ public class BackfillDependentWorkflowServiceImpl implements BackfillDependentWo
                     dependentWorkflowDefinition.getWorkflowDefinitionCode(), e.getMessage(), e);
         }
         return null;
+    }
+
+    @Override
+    public WorkflowBackfillTriggerRequest buildDependentBackfillRequest(
+                                                                        BackfillWorkflowDTO originalBackfillDTO,
+                                                                        DependentWorkflowDefinition dependentWorkflowDefinition,
+                                                                        List<String> backfillTimeList) {
+        return WorkflowBackfillTriggerRequest.builder()
+                .userId(originalBackfillDTO.getLoginUser().getId())
+                .backfillTimeList(backfillTimeList)
+                .workflowCode(dependentWorkflowDefinition.getWorkflowDefinitionCode())
+                .workflowVersion(dependentWorkflowDefinition.getWorkflowDefinitionVersion())
+                .startNodes(dependentWorkflowDefinition.getTaskDefinitionCode() != 0
+                        ? Lists.newArrayList(dependentWorkflowDefinition.getTaskDefinitionCode())
+                        : null)
+                .failureStrategy(originalBackfillDTO.getFailureStrategy())
+                .taskDependType(originalBackfillDTO.getTaskDependType())
+                .warningType(originalBackfillDTO.getWarningType())
+                .warningGroupId(originalBackfillDTO.getWarningGroupId())
+                .workflowInstancePriority(originalBackfillDTO.getWorkflowInstancePriority())
+                .workerGroup(dependentWorkflowDefinition.getWorkerGroup() != null
+                        ? dependentWorkflowDefinition.getWorkerGroup()
+                        : originalBackfillDTO.getWorkerGroup())
+                .tenantCode(originalBackfillDTO.getTenantCode())
+                .environmentCode(originalBackfillDTO.getEnvironmentCode())
+                .startParamList(originalBackfillDTO.getStartParamList())
+                .dryRun(originalBackfillDTO.getDryRun())
+                .build();
+    }
+
+    @Override
+    public Map<Long, WorkflowDefinition> batchQueryAndValidateDependentWorkflows(
+                                                                                 List<DependentWorkflowDefinition> dependentWorkflowDefinitionList) {
+        Map<Long, WorkflowDefinition> workflowMap = new java.util.HashMap<>();
+        for (DependentWorkflowDefinition dependentDef : dependentWorkflowDefinitionList) {
+            long workflowCode = dependentDef.getWorkflowDefinitionCode();
+            workflowDefinitionDao.queryByCode(workflowCode)
+                    .filter(workflow -> ReleaseState.ONLINE.equals(workflow.getReleaseState()))
+                    .ifPresent(workflow -> workflowMap.put(workflowCode, workflow));
+        }
+        return workflowMap;
+    }
+
+    @Override
+    public List<String> prepareDependentWorkflowBackfillDates(
+                                                              long upstreamWorkflowCode,
+                                                              List<String> upstreamBackfillDates,
+                                                              DependentWorkflowDefinition dependentWorkflowDefinition,
+                                                              WorkflowDefinition dependentWorkflow) {
+        // Validate dependent workflow
+        if (dependentWorkflow == null) {
+            log.warn("Dependent workflow definition not found, workflowDefinitionCode: {}, skip.",
+                    dependentWorkflowDefinition.getWorkflowDefinitionCode());
+            return new ArrayList<>();
+        }
+
+        if (!ReleaseState.ONLINE.equals(dependentWorkflow.getReleaseState())) {
+            log.warn(
+                    "Dependent workflow definition is not online, workflowDefinitionCode: {}, releaseState: {}, skip.",
+                    dependentWorkflowDefinition.getWorkflowDefinitionCode(),
+                    dependentWorkflow.getReleaseState());
+            return new ArrayList<>();
+        }
+
+        // Calculate backfill dates for dependent workflow
+        return calculateDependentBackfillDates(upstreamWorkflowCode, upstreamBackfillDates,
+                dependentWorkflowDefinition);
     }
 }
