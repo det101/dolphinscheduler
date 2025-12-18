@@ -257,7 +257,8 @@ public class BackfillWorkflowExecutorDelegate implements IExecutorDelegate<Backf
                 processService.queryReleaseSchedulerListByWorkflowDefinitionCode(dependentWorkflowCode);
         Schedule schedule = schedules.isEmpty() ? null : schedules.get(0);
 
-        // If schedule is null, create a default Schedule with default values to avoid NPE
+        // If schedule is empty, it means the user has not configured it,
+        // so a default schedule with default values ​​will be created.
         if (schedule == null) {
             schedule = Schedule.builder()
                     .failureStrategy(FailureStrategy.CONTINUE)
@@ -300,7 +301,7 @@ public class BackfillWorkflowExecutorDelegate implements IExecutorDelegate<Backf
                 .tenantCode(schedule.getTenantCode())
                 .environmentCode(schedule.getEnvironmentCode())
                 .startParamList(dependentWorkflow.getGlobalParams())
-                .dryRun(Flag.NO)
+                .dryRun(Flag.YES)
                 .backfillRunMode(originalParams.getRunMode())
                 .backfillTime(backfillTime)
                 .expectedParallelismNumber(originalParams.getExpectedParallelismNumber())
@@ -315,13 +316,11 @@ public class BackfillWorkflowExecutorDelegate implements IExecutorDelegate<Backf
     }
 
     /**
-     * Get all dependent workflows (flattened list, no level grouping)
-     * If allLevelDependent is true, recursively get all downstream workflows
-     * If allLevelDependent is false, only get Level 1 workflows
+     * Get all dependent workflows (flattened list, no level grouping).
      *
-     * @param workflowDefinitionCode the workflow definition code
-     * @param allLevelDependent whether to trigger all levels of dependencies
-     * @return list of all dependent workflow definitions
+     * @param workflowDefinitionCode the workflow definition code of the root workflow
+     * @param allLevelDependent whether to retrieve all levels of dependencies (true) or only Level 1 (false)
+     * @return list of all dependent workflow definitions (flattened, no level grouping)
      */
     private List<DependentWorkflowDefinition> getAllDependentWorkflows(
                                                                        long workflowDefinitionCode,
@@ -350,7 +349,6 @@ public class BackfillWorkflowExecutorDelegate implements IExecutorDelegate<Backf
         }
 
         if (!allLevelDependent) {
-            // Only Level 1
             return allWorkflows;
         }
 
@@ -388,22 +386,33 @@ public class BackfillWorkflowExecutorDelegate implements IExecutorDelegate<Backf
     }
 
     /**
-     * Calculate dependent backfill dates based on dependency cycle configuration.
-     * Only includes dates where the calculated dependent date intervals overlap with upstream backfill dates.
+     * Calculate the list of dates that need to be backfilled for the downstream workflow.
+     * Only includes downstream dates whose dependent upstream dates actually exist in the upstream backfill list.
      * 
-     * <p>Example: Downstream dependency cycle > upstream cycle
+     * <p>Core logic: For each candidate downstream date, calculate its corresponding upstream dependent date
+     * according to the dependency cycle rule. If that upstream date appears in the upstream backfill list,
+     * then this downstream date needs to be backfilled.
+     * 
+     * <p>Example: Downstream dependency cycle is WEEK with dateValue="lastMonday"
      * <pre>
-     * Upstream: daily backfill on 2025-01-13(Mon) ~ 2025-01-20(Mon)
-     * Downstream: depends on upstream with cycle=WEEK, dateValue="lastMonday"
+     * Upstream backfill dates: [2025-01-13(Mon), 2025-01-14(Tue), ..., 2025-01-19(Sun), 2025-01-20(Mon)]
+     * Downstream dependency: cycle=WEEK, dateValue="lastMonday"
      * 
-     * Result: Only 2025-01-20 triggers downstream backfill, because its "lastMonday" (2025-01-13)
-     * exists in upstream list. Other dates don't trigger because their "lastMonday" is outside the upstream range.
+     * Calculation process:
+     * Candidate date 2025-01-13: Calculate its "lastMonday" → 2025-01-06 (not in upstream list) → Exclude
+     * Candidate date 2025-01-14: Calculate its "lastMonday" → 2025-01-06 (not in upstream list) → Exclude
+     * ...
+     * Candidate date 2025-01-20: Calculate its "lastMonday" → 2025-01-13 (exists in upstream list) → Include
+     * 
+     * Result: Downstream backfill dates = [2025-01-20]
+     * Reason: Only 2025-01-20's dependent upstream date (2025-01-13) is actually backfilled
      * </pre>
      * 
-     * @param upstreamBackfillDateList upstream workflow's backfill date list
-     * @param dependentWorkflowDefinition dependent workflow definition containing dependency configuration
+     * @param upstreamBackfillDateList the set of dates actually backfilled by the upstream workflow
+     * @param dependentWorkflowDefinition dependent workflow definition containing dependency cycle configuration
+     *                                     (e.g., WEEK, MONTH, DAY, etc.)
      * @param upstreamWorkflowCode upstream workflow code to match the specific dependency item
-     * @return calculated backfill date list for dependent workflow
+     * @return list of downstream dates that need to be backfilled, sorted in ascending chronological order
      */
     private List<ZonedDateTime> calculateDependentBackfillDates(
                                                                 List<ZonedDateTime> upstreamBackfillDateList,
@@ -420,17 +429,14 @@ public class BackfillWorkflowExecutorDelegate implements IExecutorDelegate<Backf
         }
 
         for (ZonedDateTime upstreamBackfillDate : upstreamBackfillDateList) {
-            // Convert ZonedDateTime to Date for DependentUtils
             Date upstreamDate = Date.from(upstreamBackfillDate.toInstant());
 
             // Use DependentUtils.getDateIntervalList(Date, String) to calculate dependent date intervals
             List<DateInterval> dateIntervalList = DependentUtils.getDateIntervalList(upstreamDate, dateValue);
 
             if (dateIntervalList != null && !dateIntervalList.isEmpty()) {
-                // Check if any date in upstream list falls within the calculated dependent date intervals
                 boolean foundMatch = false;
                 for (DateInterval interval : dateIntervalList) {
-                    // Check each upstream date to see if it falls within this interval
                     for (ZonedDateTime checkDate : upstreamBackfillDateList) {
                         Date checkDateAsDate = Date.from(checkDate.toInstant());
 
