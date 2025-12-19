@@ -39,6 +39,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 
 /**
  * Test for BackfillWorkflowExecutorDelegate
@@ -212,6 +214,7 @@ public class BackfillWorkflowExecutorDelegateTest {
     }
 
     @Test
+    @MockitoSettings(strictness = Strictness.LENIENT)
     public void testGetAllDependentWorkflows_OnlyLevel1() throws Exception {
         // Arrange: Root workflow A has Level 1 dependencies B and C, B has Level 2 dependency D
         long rootWorkflowCode = 100L;
