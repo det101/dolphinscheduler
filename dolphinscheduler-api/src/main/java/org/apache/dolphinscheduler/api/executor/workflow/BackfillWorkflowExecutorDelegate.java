@@ -25,7 +25,6 @@ import org.apache.dolphinscheduler.api.validator.workflow.BackfillWorkflowReques
 import org.apache.dolphinscheduler.common.enums.ComplementDependentMode;
 import org.apache.dolphinscheduler.common.enums.ExecutionOrder;
 import org.apache.dolphinscheduler.common.enums.FailureStrategy;
-import org.apache.dolphinscheduler.common.enums.Flag;
 import org.apache.dolphinscheduler.common.enums.Priority;
 import org.apache.dolphinscheduler.common.enums.ReleaseState;
 import org.apache.dolphinscheduler.common.enums.RunMode;
@@ -305,7 +304,7 @@ public class BackfillWorkflowExecutorDelegate implements IExecutorDelegate<Backf
                 .expectedParallelismNumber(originalParams.getExpectedParallelismNumber())
                 .executionOrder(originalParams.getExecutionOrder())
                 // In backfill scenario, startNodes is nul
-                .startNodes(null) 
+                .startNodes(null)
                 .taskDependType(TaskDependType.TASK_POST)
                 // Disable recursive execution because dependent workflows are pre-extracted via
                 // getAllDependentWorkflows, which also handles circular dependencies
