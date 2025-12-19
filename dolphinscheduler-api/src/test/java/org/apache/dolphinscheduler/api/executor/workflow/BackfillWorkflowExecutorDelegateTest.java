@@ -232,11 +232,13 @@ public class BackfillWorkflowExecutorDelegateTest {
         when(workflowLineageService.queryDownstreamDependentWorkflowDefinitions(rootWorkflowCode))
                 .thenReturn(level1List);
 
+        // Mock Level 2 dependency: B has downstream dependency D
+        // This is crucial to verify that the code correctly stops at Level 1
+        // If the code incorrectly recurses, it would find D and the test would fail
         List<DependentWorkflowDefinition> level2List = new ArrayList<>();
         level2List.add(level2D);
         when(workflowLineageService.queryDownstreamDependentWorkflowDefinitions(level1WorkflowB))
                 .thenReturn(level2List);
-
         when(workflowLineageService.queryDownstreamDependentWorkflowDefinitions(level1WorkflowC))
                 .thenReturn(new ArrayList<>());
 
@@ -246,11 +248,15 @@ public class BackfillWorkflowExecutorDelegateTest {
                 .invoke(backfillWorkflowExecutorDelegate, rootWorkflowCode, false);
 
         // Assert: Only Level 1 workflows (B and C) should be returned, Level 2 dependency D is excluded
+        // Even though B has downstream dependency D, D should NOT be included because allLevelDependent = false
         Assertions.assertNotNull(result);
-        Assertions.assertEquals(2, result.size());
-        Assertions.assertTrue(result.stream().anyMatch(w -> w.getWorkflowDefinitionCode() == level1WorkflowB));
-        Assertions.assertTrue(result.stream().anyMatch(w -> w.getWorkflowDefinitionCode() == level1WorkflowC));
-        Assertions.assertFalse(result.stream().anyMatch(w -> w.getWorkflowDefinitionCode() == level2WorkflowD));
+        Assertions.assertEquals(2, result.size(), "Should only return Level 1 dependencies (B and C)");
+        Assertions.assertTrue(result.stream().anyMatch(w -> w.getWorkflowDefinitionCode() == level1WorkflowB),
+                "Level 1 workflow B should be included");
+        Assertions.assertTrue(result.stream().anyMatch(w -> w.getWorkflowDefinitionCode() == level1WorkflowC),
+                "Level 1 workflow C should be included");
+        Assertions.assertFalse(result.stream().anyMatch(w -> w.getWorkflowDefinitionCode() == level2WorkflowD),
+                "Level 2 workflow D should be excluded when allLevelDependent = false");
     }
 
     @Test
@@ -336,57 +342,6 @@ public class BackfillWorkflowExecutorDelegateTest {
         DependentTaskModel dependentTaskModel = new DependentTaskModel();
         List<DependentItem> dependentItemList = new ArrayList<>();
         dependentItemList.add(dependentItem);
-        dependentTaskModel.setDependItemList(dependentItemList);
-
-        // Create Dependence
-        DependentParameters.Dependence dependence = new DependentParameters.Dependence();
-        List<DependentTaskModel> dependTaskList = new ArrayList<>();
-        dependTaskList.add(dependentTaskModel);
-        dependence.setDependTaskList(dependTaskList);
-
-        // Create DependentParameters
-        DependentParameters dependentParameters = new DependentParameters();
-        dependentParameters.setDependence(dependence);
-
-        // Set taskParams as JSON string
-        definition.setTaskParams(JSONUtils.toJsonString(dependentParameters));
-
-        return definition;
-    }
-
-    /**
-     * Helper method to create DependentWorkflowDefinition with two upstream dependencies
-     * This simulates a downstream workflow that depends on two different upstream workflows
-     */
-    private DependentWorkflowDefinition createDependentWorkflowDefinitionWithTwoUpstreams(
-                                                                                          long upstream1WorkflowCode,
-                                                                                          long upstream2WorkflowCode,
-                                                                                          long downstreamWorkflowCode,
-                                                                                          String cycle1,
-                                                                                          String dateValue1,
-                                                                                          String cycle2,
-                                                                                          String dateValue2) {
-        DependentWorkflowDefinition definition = new DependentWorkflowDefinition();
-        definition.setWorkflowDefinitionCode(downstreamWorkflowCode);
-        definition.setTaskDefinitionCode(1000L);
-
-        // Create DependentItem for upstream1
-        DependentItem dependentItem1 = new DependentItem();
-        dependentItem1.setDefinitionCode(upstream1WorkflowCode);
-        dependentItem1.setCycle(cycle1);
-        dependentItem1.setDateValue(dateValue1);
-
-        // Create DependentItem for upstream2
-        DependentItem dependentItem2 = new DependentItem();
-        dependentItem2.setDefinitionCode(upstream2WorkflowCode);
-        dependentItem2.setCycle(cycle2);
-        dependentItem2.setDateValue(dateValue2);
-
-        // Create DependentTaskModel with both items
-        DependentTaskModel dependentTaskModel = new DependentTaskModel();
-        List<DependentItem> dependentItemList = new ArrayList<>();
-        dependentItemList.add(dependentItem1);
-        dependentItemList.add(dependentItem2);
         dependentTaskModel.setDependItemList(dependentItemList);
 
         // Create Dependence
