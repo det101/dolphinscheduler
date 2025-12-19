@@ -288,28 +288,29 @@ public class BackfillWorkflowExecutorDelegate implements IExecutorDelegate<Backf
                 dependentWorkflowDefinition.getWorkerGroup());
 
         WorkflowBackFillRequest dependentBackfillRequest = WorkflowBackFillRequest.builder()
-                .loginUser(originalBackfillDTO.getLoginUser())
-                .workflowDefinitionCode(dependentWorkflowCode)
-                .startNodes(null) // In backfill scenario, startNodes is null
-                .failureStrategy(schedule.getFailureStrategy())
-                .taskDependType(TaskDependType.TASK_POST)
-                .execType(originalBackfillDTO.getExecType())
-                .warningType(schedule.getWarningType())
-                .warningGroupId(dependentWorkflow.getWarningGroupId())
-                .workflowInstancePriority(schedule.getWorkflowInstancePriority())
+                .backfillTime(backfillTime)
                 .workerGroup(workerGroup)
+                .loginUser(originalBackfillDTO.getLoginUser())
+                .execType(originalBackfillDTO.getExecType())
+                .dryRun(originalBackfillDTO.getDryRun())
+                .failureStrategy(schedule.getFailureStrategy())
+                .workflowInstancePriority(schedule.getWorkflowInstancePriority())
                 .tenantCode(schedule.getTenantCode())
                 .environmentCode(schedule.getEnvironmentCode())
+                .warningType(schedule.getWarningType())
+                .warningGroupId(dependentWorkflow.getWarningGroupId())
+                .workflowDefinitionCode(dependentWorkflowCode)
                 .startParamList(dependentWorkflow.getGlobalParams())
-                .dryRun(Flag.YES)
                 .backfillRunMode(originalParams.getRunMode())
-                .backfillTime(backfillTime)
                 .expectedParallelismNumber(originalParams.getExpectedParallelismNumber())
+                .executionOrder(originalParams.getExecutionOrder())
+                // In backfill scenario, startNodes is nul
+                .startNodes(null) 
+                .taskDependType(TaskDependType.TASK_POST)
                 // Disable recursive execution because dependent workflows are pre-extracted via
                 // getAllDependentWorkflows, which also handles circular dependencies
                 .backfillDependentMode(ComplementDependentMode.OFF_MODE)
                 .allLevelDependent(false)
-                .executionOrder(originalParams.getExecutionOrder())
                 .build();
 
         return backfillWorkflowRequestTransformer.transform(dependentBackfillRequest);
@@ -410,7 +411,6 @@ public class BackfillWorkflowExecutorDelegate implements IExecutorDelegate<Backf
      * 
      * @param upstreamBackfillDateList the set of dates actually backfilled by the upstream workflow
      * @param dependentWorkflowDefinition dependent workflow definition containing dependency cycle configuration
-     *                                     (e.g., WEEK, MONTH, DAY, etc.)
      * @param upstreamWorkflowCode upstream workflow code to match the specific dependency item
      * @return list of downstream dates that need to be backfilled, sorted in ascending chronological order
      */
@@ -431,7 +431,6 @@ public class BackfillWorkflowExecutorDelegate implements IExecutorDelegate<Backf
         for (ZonedDateTime upstreamBackfillDate : upstreamBackfillDateList) {
             Date upstreamDate = Date.from(upstreamBackfillDate.toInstant());
 
-            // Use DependentUtils.getDateIntervalList(Date, String) to calculate dependent date intervals
             List<DateInterval> dateIntervalList = DependentUtils.getDateIntervalList(upstreamDate, dateValue);
 
             if (dateIntervalList != null && !dateIntervalList.isEmpty()) {
@@ -458,8 +457,6 @@ public class BackfillWorkflowExecutorDelegate implements IExecutorDelegate<Backf
             }
         }
 
-        log.debug("Calculated {} dependent backfill dates from {} upstream dates",
-                dependentBackfillDateList.size(), upstreamBackfillDateList.size());
         return dependentBackfillDateList;
     }
 
