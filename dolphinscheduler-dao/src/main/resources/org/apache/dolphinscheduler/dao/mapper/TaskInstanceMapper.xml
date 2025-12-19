@@ -254,7 +254,9 @@
         </if>
         group by task_code
         ) t_max
-        on instance.workflow_instance_id = t_max.workflow_instance_id
+        -- Fixed: Use #{workflowInstanceId} directly instead of t_max.workflow_instance_id
+        -- (subquery doesn't select workflow_instance_id, only task_code and max_end_time)
+        on instance.workflow_instance_id = #{workflowInstanceId}
         and instance.task_code = t_max.task_code
         and instance.end_time = t_max.max_end_time
     </select>
