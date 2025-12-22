@@ -449,7 +449,7 @@ public class BackfillWorkflowExecutorDelegateTest {
         List<DependentWorkflowDefinition> result = (List<DependentWorkflowDefinition>) getAllDependentWorkflowsMethod
                 .invoke(backfillWorkflowExecutorDelegate, rootWorkflowCode, true);
 
-        //Self-dependency should be filtered out
+        // Self-dependency should be filtered out
         Assertions.assertNotNull(result);
         Assertions.assertEquals(0, result.size());
     }
