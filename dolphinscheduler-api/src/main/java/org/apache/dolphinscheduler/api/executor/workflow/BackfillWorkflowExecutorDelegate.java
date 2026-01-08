@@ -129,13 +129,39 @@ public class BackfillWorkflowExecutorDelegate implements IExecutorDelegate<Backf
             expectedParallelismNumber = listDate.size();
         }
 
-        log.info("In parallel mode, current expectedParallelismNumber:{}", expectedParallelismNumber);
+        log.info("In parallel mode, current expectedParallelismNumber: {}", expectedParallelismNumber);
         final List<Integer> workflowInstanceIdList = Lists.newArrayList();
-        for (List<ZonedDateTime> datePartition : Lists.partition(listDate, expectedParallelismNumber)) {
-            final Integer workflowInstanceId = doBackfillWorkflow(backfillWorkflowDTO, datePartition);
+        for (List<ZonedDateTime> stringDate : splitDateTime(listDate, expectedParallelismNumber)) {
+            final Integer workflowInstanceId = doBackfillWorkflow(
+                    backfillWorkflowDTO,
+                    stringDate.stream().map(DateUtils::dateToString).collect(Collectors.toList()));
             workflowInstanceIdList.add(workflowInstanceId);
         }
         return workflowInstanceIdList;
+    }
+
+    /**
+     * split date time list into n parts, the last part may be larger if not divisible
+     */
+    private List<List<ZonedDateTime>> splitDateTime(List<ZonedDateTime> dateTimeList, int numParts) {
+        List<List<ZonedDateTime>> result = new ArrayList<>();
+        int n = dateTimeList.size();
+
+        int baseSize = n / numParts;
+        int remainder = n % numParts;
+
+        int start = 0;
+        for (int i = 0; i < numParts; i++) {
+            int currentSize = baseSize;
+            if (i == numParts - 1) {
+                currentSize += remainder;
+            }
+            List<ZonedDateTime> part = dateTimeList.subList(start, start + currentSize);
+            result.add(part);
+            start += currentSize;
+        }
+
+        return result;
     }
 
     private Integer doBackfillWorkflow(final BackfillWorkflowDTO backfillWorkflowDTO,
