@@ -15,28 +15,11 @@
  * limitations under the License.
  */
 
-package org.apache.dolphinscheduler.dao.repository.impl;
+package org.apache.dolphinscheduler.server.master.exception.dispatch;
 
-import org.apache.dolphinscheduler.dao.entity.Tenant;
-import org.apache.dolphinscheduler.dao.mapper.TenantMapper;
-import org.apache.dolphinscheduler.dao.repository.BaseDao;
-import org.apache.dolphinscheduler.dao.repository.TenantDao;
+public class NoAvailableWorkerException extends TaskDispatchException {
 
-import java.util.Optional;
-
-import lombok.NonNull;
-
-import org.springframework.stereotype.Repository;
-
-@Repository
-public class TenantDaoImpl extends BaseDao<Tenant, TenantMapper> implements TenantDao {
-
-    public TenantDaoImpl(@NonNull TenantMapper tenantMapper) {
-        super(tenantMapper);
-    }
-
-    @Override
-    public Optional<Tenant> queryByCode(String tenantCode) {
-        return Optional.ofNullable(mybatisMapper.queryByTenantCode(tenantCode));
+    public NoAvailableWorkerException(String workerGroup) {
+        super("Cannot find available worker under worker group: " + workerGroup);
     }
 }
