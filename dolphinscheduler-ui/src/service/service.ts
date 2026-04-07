@@ -23,6 +23,7 @@ import _ from 'lodash'
 import cookies from 'js-cookie'
 import router from '@/router'
 import utils from '@/utils'
+import i18n from '@/locales'
 
 const userStore = useUserStore()
 const uiSettingStore = useUISettingStore()
@@ -38,6 +39,11 @@ const handleError = (res: AxiosResponse<any, any>) => {
     utils.log.error(res)
   }
   window.$message.error(res.data.msg)
+}
+
+const getConnectionErrorMessage = (): string => {
+  const locale = cookies.get('language') === 'en_US' ? 'en_US' : 'zh_CN'
+  return i18n.global.t('connection.connection_failed', {}, { locale })
 }
 
 const baseRequestConfig: AxiosRequestConfig = {
@@ -60,8 +66,8 @@ const baseRequestConfig: AxiosRequestConfig = {
 
 const service = axios.create(baseRequestConfig)
 
-const err = (err: AxiosError): Promise<AxiosError> => {
-  if (err.response?.status === 401 || err.response?.status === 504) {
+const err = (error: AxiosError): Promise<AxiosError> => {
+  if (error.response?.status === 401 || error.response?.status === 504) {
     userStore.setSessionId('')
     userStore.setSecurityConfigType('')
     userStore.setUserInfo({})
@@ -69,7 +75,15 @@ const err = (err: AxiosError): Promise<AxiosError> => {
     router.push({ path: '/login' })
   }
 
-  return Promise.reject(err)
+  if (!error.response) {
+    if (import.meta.env.MODE === 'development') {
+      utils.log.capsule('DolphinScheduler', 'UI')
+      utils.log.error(error)
+    }
+    window.$message.error(getConnectionErrorMessage())
+  }
+
+  return Promise.reject(error)
 }
 
 service.interceptors.request.use((config: AxiosRequestConfig<any>) => {

@@ -32,8 +32,10 @@ import theme from '@/locales/en_US/theme'
 import user_dropdown from '@/locales/en_US/user-dropdown'
 import ui_setting from '@/locales/en_US/ui_setting'
 import about from '@/locales/en_US/about'
+import connection from '@/locales/en_US/connection'
 
 export default {
+  connection,
   login,
   modal,
   theme,
