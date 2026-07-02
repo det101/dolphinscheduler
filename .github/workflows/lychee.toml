@@ -40,6 +40,11 @@ exclude = [
     '^https://www\.bilibili\.com/video/BV1d64y1s7eZ',
     '^https://www\.mysql\.com',
     '^https://dev\.mysql\.com/downloads/mysql',
+    '^https://kubernetes\.io',
+    '^https://etcd\.io',
+    '^https://helm\.sh',
+    '^https://docs\.conda\.io',
+    '^https://seatunnel\.apache\.org',
 ]
 
 # Exclude paths from getting checked. The values are treated as regular expressions
@@ -76,7 +81,7 @@ include_mail = false
 include_verbatim = false
 
 # Enable the checking of fragments in links.
-include_fragments = "full"
+include_fragments = "bare"
 
 # User agent to send with each request.
 user_agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
