@@ -1,0 +1,141 @@
+{
+  "version": 1,
+  "jobs": [
+    {
+      "id": "92b34063",
+      "name": "检查 Issue #17937 开发进度：如果分支已推送则创",
+      "enabled": true,
+      "schedule": {
+        "kind": "every",
+        "atMs": null,
+        "everyMs": 1800000,
+        "expr": null,
+        "tz": null
+      },
+      "payload": {
+        "kind": "agent_turn",
+        "message": "检查 Issue #17937 开发进度：如果分支已推送则创建 PR，否则继续开发",
+        "deliver": false,
+        "channel": null,
+        "to": null,
+        "channelMeta": {},
+        "sessionKey": "cli:direct",
+        "originChannel": "cli",
+        "originChatId": "direct",
+        "originMetadata": {}
+      },
+      "state": {
+        "nextRunAtMs": 1783330653462,
+        "lastRunAtMs": null,
+        "lastStatus": null,
+        "lastError": null,
+        "runHistory": []
+      },
+      "createdAtMs": 1772191915322,
+      "updatedAtMs": 1783326871190,
+      "deleteAfterRun": false
+    },
+    {
+      "id": "5175f4a9",
+      "name": "检查 Issue #17937 开发进度 - 如果中断则继续",
+      "enabled": true,
+      "schedule": {
+        "kind": "every",
+        "atMs": null,
+        "everyMs": 1800000,
+        "expr": null,
+        "tz": null
+      },
+      "payload": {
+        "kind": "agent_turn",
+        "message": "检查 Issue #17937 开发进度 - 如果中断则继续完成",
+        "deliver": false,
+        "channel": null,
+        "to": null,
+        "channelMeta": {},
+        "sessionKey": "cli:direct",
+        "originChannel": "cli",
+        "originChatId": "direct",
+        "originMetadata": {}
+      },
+      "state": {
+        "nextRunAtMs": 1783330653462,
+        "lastRunAtMs": null,
+        "lastStatus": null,
+        "lastError": null,
+        "runHistory": []
+      },
+      "createdAtMs": 1772193874572,
+      "updatedAtMs": 1783326871190,
+      "deleteAfterRun": false
+    },
+    {
+      "id": "dream",
+      "name": "dream",
+      "enabled": true,
+      "schedule": {
+        "kind": "every",
+        "atMs": null,
+        "everyMs": 7200000,
+        "expr": null,
+        "tz": null
+      },
+      "payload": {
+        "kind": "system_event",
+        "message": "",
+        "deliver": false,
+        "channel": null,
+        "to": null,
+        "channelMeta": {},
+        "sessionKey": null,
+        "originChannel": null,
+        "originChatId": null,
+        "originMetadata": {}
+      },
+      "state": {
+        "nextRunAtMs": 1783336053462,
+        "lastRunAtMs": null,
+        "lastStatus": null,
+        "lastError": null,
+        "runHistory": []
+      },
+      "createdAtMs": 1783328853452,
+      "updatedAtMs": 1783328853452,
+      "deleteAfterRun": false
+    },
+    {
+      "id": "heartbeat",
+      "name": "heartbeat",
+      "enabled": true,
+      "schedule": {
+        "kind": "every",
+        "atMs": null,
+        "everyMs": 1800000,
+        "expr": null,
+        "tz": "UTC"
+      },
+      "payload": {
+        "kind": "system_event",
+        "message": "",
+        "deliver": false,
+        "channel": null,
+        "to": null,
+        "channelMeta": {},
+        "sessionKey": null,
+        "originChannel": null,
+        "originChatId": null,
+        "originMetadata": {}
+      },
+      "state": {
+        "nextRunAtMs": 1783330653462,
+        "lastRunAtMs": null,
+        "lastStatus": null,
+        "lastError": null,
+        "runHistory": []
+      },
+      "createdAtMs": 1783328853458,
+      "updatedAtMs": 1783328853458,
+      "deleteAfterRun": false
+    }
+  ]
+}

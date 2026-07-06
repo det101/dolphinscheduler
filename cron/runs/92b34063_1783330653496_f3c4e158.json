@@ -1,0 +1,17 @@
+{
+  "job_id": "92b34063",
+  "job_name": "检查 Issue #17937 开发进度：如果分支已推送则创",
+  "session_key": "cli:direct",
+  "prompt_ref": {
+    "id": "cron.agent_turn.reminder",
+    "version": 1,
+    "sha256": "ae3bc1960005108c58b98eaddeffac2bde7e9a25f5954e33c57dbfc606b3dc5c"
+  },
+  "prompt_vars": {
+    "message": "检查 Issue #17937 开发进度：如果分支已推送则创建 PR，否则继续开发"
+  },
+  "rendered_prompt": "The scheduled time has arrived. Execute this scheduled cron job now and report the result to the user in the same session.\n\nRules:\n- Speak directly to the user in their language.\n- Do not narrate internal progress.\n- Do not include user IDs.\n- Do not add status reports like \"Done\" or \"Reminded\" unless they are the natural response.\n\nCron job: 检查 Issue #17937 开发进度：如果分支已推送则创建 PR，否则继续开发",
+  "status": "queued",
+  "run_id": "92b34063:1783330653496:f3c4e158",
+  "updated_at_ms": 1783330653496
+}
