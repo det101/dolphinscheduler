@@ -1,0 +1,30 @@
+=== Workflow Definition Query (masked) ===
+globalParamList: [{"prop": "db_pwd", "direct": "IN", "type": "VARCHAR", "value": "******", "sensitive": true}]
+task localParams: [{"prop": "token", "direct": "IN", "type": "VARCHAR", "value": "******", "sensitive": true}]
+
+=== view-variables (masked) ===
+{
+  "globalParams": [
+    {
+      "prop": "db_pwd",
+      "direct": "IN",
+      "type": "VARCHAR",
+      "value": "******",
+      "sensitive": true
+    }
+  ],
+  "localParams": {
+    "shell_node_1": {
+      "localParamsList": [
+        {
+          "prop": "token",
+          "direct": "IN",
+          "type": "VARCHAR",
+          "value": "******",
+          "sensitive": true
+        }
+      ],
+      "taskType": "SHELL"
+    }
+  }
+}
