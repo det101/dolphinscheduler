@@ -125,63 +125,6 @@ class PropertySensitiveUtilsTest {
     }
 
     @Test
-    void mergeStartParamsSkipsMaskFromMapFormatWithoutSensitiveFlag() {
-        Property startParam = nonSensitive("pwd", TaskConstants.SENSITIVE_DATA_MASK);
-        Property global = sensitive("pwd", "Secret123");
-
-        List<Property> merged = PropertySensitiveUtils.mergeStartParamsWithGlobalParams(
-                Collections.singletonList(startParam), Collections.singletonList(global));
-
-        Assertions.assertEquals(1, merged.size());
-        Assertions.assertEquals("Secret123", merged.get(0).getValue());
-        Assertions.assertTrue(merged.get(0).isSensitive());
-    }
-
-    @Test
-    void mergeStartParamsSkipsMaskFromListFormatWithSensitiveFlag() {
-        Property startParam = sensitive("pwd", TaskConstants.SENSITIVE_DATA_MASK);
-        Property global = sensitive("pwd", "Secret123");
-
-        List<Property> merged = PropertySensitiveUtils.mergeStartParamsWithGlobalParams(
-                Collections.singletonList(startParam), Collections.singletonList(global));
-
-        Assertions.assertEquals("Secret123", merged.get(0).getValue());
-        Assertions.assertTrue(merged.get(0).isSensitive());
-    }
-
-    @Test
-    void mergeStartParamsAppliesRealOverride() {
-        Property startParam = nonSensitive("pwd", "new-secret");
-        Property global = sensitive("pwd", "Secret123");
-
-        List<Property> merged = PropertySensitiveUtils.mergeStartParamsWithGlobalParams(
-                Collections.singletonList(startParam), Collections.singletonList(global));
-
-        Assertions.assertEquals("new-secret", merged.get(0).getValue());
-    }
-
-    @Test
-    void mergeStartParamsDoesNotAddMaskAsNewParam() {
-        Property startParam = nonSensitive("token", TaskConstants.SENSITIVE_DATA_MASK);
-
-        List<Property> merged = PropertySensitiveUtils.mergeStartParamsWithGlobalParams(
-                Collections.singletonList(startParam), Collections.emptyList());
-
-        Assertions.assertTrue(merged.isEmpty());
-    }
-
-    @Test
-    void mergeStartParamsEmptyStringIsRealOverride() {
-        Property startParam = sensitive("pwd", "");
-        Property global = sensitive("pwd", "Secret123");
-
-        List<Property> merged = PropertySensitiveUtils.mergeStartParamsWithGlobalParams(
-                Collections.singletonList(startParam), Collections.singletonList(global));
-
-        Assertions.assertEquals("", merged.get(0).getValue());
-    }
-
-    @Test
     void serializationRoundTripKeepsSensitiveFlag() {
         Property property = sensitive("token", "abc");
         String json = org.apache.dolphinscheduler.common.utils.JSONUtils.toJsonString(

@@ -22,9 +22,7 @@ import org.apache.dolphinscheduler.plugin.task.api.model.Property;
 
 import org.apache.commons.collections4.CollectionUtils;
 
-import java.util.ArrayList;
 import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -90,39 +88,10 @@ public class PropertySensitiveUtils {
     }
 
     /**
-     * Overlay start/command params onto workflow global params.
-     * <p>
-     * {@code ******} is keep-original and never used as a real override, including map-format
-     * startParams that lose {@code sensitive=true}. Empty string is a real empty value.
-     */
-    public List<Property> mergeStartParamsWithGlobalParams(List<Property> startParams,
-                                                           List<Property> globalParams) {
-        Map<String, Property> finalParams = new LinkedHashMap<>();
-        for (Property globalParam : CollectionUtils.emptyIfNull(globalParams)) {
-            if (globalParam == null || globalParam.getProp() == null) {
-                continue;
-            }
-            finalParams.put(globalParam.getProp(), copy(globalParam));
-        }
-        for (Property startParam : CollectionUtils.emptyIfNull(startParams)) {
-            if (startParam == null || startParam.getProp() == null) {
-                continue;
-            }
-            if (isSensitiveValuePlaceholder(startParam.getValue())) {
-                continue;
-            }
-            finalParams.put(startParam.getProp(), copy(startParam));
-        }
-        return new ArrayList<>(finalParams.values());
-    }
-
-    /**
      * Replace keep-original placeholders with existing DB values.
      * Only {@code ******} is treated as keep-original; empty string is a real empty value.
-     * <p>
-     * Used by definition/instance update. Start/command overlay uses
-     * {@link #mergeStartParamsWithGlobalParams} so a missing {@code sensitive} flag
-     * (map-format startParams) cannot persist the mask.
+     * Used by definition/instance update. Start/backfill drops {@code ******} in
+     * {@link PropertyUtils#startParamsTransformPropertyList} before Command is written.
      */
     public List<Property> mergeSensitiveValuePlaceholders(List<Property> submittedProperties,
                                                           List<Property> existingProperties) {

@@ -32,18 +32,16 @@ import org.junit.jupiter.api.Test;
 class PropertyUtilsTest {
 
     @Test
-    void mapFormatLosesSensitiveFlag() {
+    void mapFormatDropsSensitiveMask() {
         List<Property> startParams =
                 PropertyUtils.startParamsTransformPropertyList("{\"pwd\":\"" + TaskConstants.SENSITIVE_DATA_MASK
                         + "\"}");
 
-        Assertions.assertEquals(1, startParams.size());
-        Assertions.assertEquals(TaskConstants.SENSITIVE_DATA_MASK, startParams.get(0).getValue());
-        Assertions.assertFalse(startParams.get(0).isSensitive());
+        Assertions.assertTrue(startParams.isEmpty());
     }
 
     @Test
-    void listFormatKeepsSensitiveFlag() {
+    void listFormatDropsSensitiveMask() {
         Property submitted = Property.builder()
                 .prop("pwd")
                 .direct(Direct.IN)
@@ -55,55 +53,54 @@ class PropertyUtilsTest {
 
         List<Property> startParams = PropertyUtils.startParamsTransformPropertyList(json);
 
+        Assertions.assertTrue(startParams.isEmpty());
+    }
+
+    @Test
+    void mapFormatKeepsRealOverrideAndDropsMask() {
+        List<Property> startParams = PropertyUtils.startParamsTransformPropertyList(
+                "{\"pwd\":\"" + TaskConstants.SENSITIVE_DATA_MASK + "\",\"name\":\"alice\"}");
+
         Assertions.assertEquals(1, startParams.size());
-        Assertions.assertTrue(startParams.get(0).isSensitive());
-        Assertions.assertEquals(TaskConstants.SENSITIVE_DATA_MASK, startParams.get(0).getValue());
+        Assertions.assertEquals("name", startParams.get(0).getProp());
+        Assertions.assertEquals("alice", startParams.get(0).getValue());
     }
 
     @Test
-    void mapFormatMaskDoesNotOverwriteSensitiveGlobalParam() {
-        List<Property> startParams =
-                PropertyUtils.startParamsTransformPropertyList("{\"pwd\":\"" + TaskConstants.SENSITIVE_DATA_MASK
-                        + "\"}");
-        Property global = Property.builder()
-                .prop("pwd")
-                .direct(Direct.IN)
-                .type(DataType.VARCHAR)
-                .value("Secret123")
-                .sensitive(true)
-                .build();
-
-        List<Property> merged = PropertySensitiveUtils.mergeStartParamsWithGlobalParams(
-                startParams, Collections.singletonList(global));
-
-        Assertions.assertEquals("Secret123", merged.get(0).getValue());
-        Assertions.assertTrue(merged.get(0).isSensitive());
-    }
-
-    @Test
-    void listFormatMaskDoesNotOverwriteSensitiveGlobalParam() {
+    void listFormatKeepsEmptyStringAsRealOverride() {
         Property submitted = Property.builder()
                 .prop("pwd")
                 .direct(Direct.IN)
                 .type(DataType.VARCHAR)
-                .value(TaskConstants.SENSITIVE_DATA_MASK)
-                .sensitive(true)
-                .build();
-        Property global = Property.builder()
-                .prop("pwd")
-                .direct(Direct.IN)
-                .type(DataType.VARCHAR)
-                .value("Secret123")
+                .value("")
                 .sensitive(true)
                 .build();
 
         List<Property> startParams =
                 PropertyUtils.startParamsTransformPropertyList(JSONUtils.toJsonString(Collections.singletonList(
                         submitted)));
-        List<Property> merged = PropertySensitiveUtils.mergeStartParamsWithGlobalParams(
-                startParams, Collections.singletonList(global));
 
-        Assertions.assertEquals("Secret123", merged.get(0).getValue());
-        Assertions.assertTrue(merged.get(0).isSensitive());
+        Assertions.assertEquals(1, startParams.size());
+        Assertions.assertEquals("", startParams.get(0).getValue());
+        Assertions.assertTrue(startParams.get(0).isSensitive());
+    }
+
+    @Test
+    void listFormatKeepsSensitiveFlagOnRealValue() {
+        Property submitted = Property.builder()
+                .prop("pwd")
+                .direct(Direct.IN)
+                .type(DataType.VARCHAR)
+                .value("new-secret")
+                .sensitive(true)
+                .build();
+
+        List<Property> startParams =
+                PropertyUtils.startParamsTransformPropertyList(JSONUtils.toJsonString(Collections.singletonList(
+                        submitted)));
+
+        Assertions.assertEquals(1, startParams.size());
+        Assertions.assertEquals("new-secret", startParams.get(0).getValue());
+        Assertions.assertTrue(startParams.get(0).isSensitive());
     }
 }

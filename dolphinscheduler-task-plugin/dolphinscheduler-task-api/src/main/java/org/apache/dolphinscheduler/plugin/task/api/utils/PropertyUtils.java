@@ -35,8 +35,9 @@ public class PropertyUtils {
     /**
      * startParams transform propertyList.
      * <p>
-     * Map format {@code {"pwd":"******"}} loses {@code sensitive}; callers must overlay via
-     * {@link PropertySensitiveUtils#mergeStartParamsWithGlobalParams} so the mask is not persisted.
+     * {@code ******} is keep-original and is dropped here (API start/backfill) so Command/DB
+     * never persist the mask. Master then overlays remaining command params onto workflow
+     * globals without knowing about the placeholder.
      *
      * @param startParams startParams
      * @return startParamList
@@ -51,6 +52,12 @@ public class PropertyUtils {
                         .collect(Collectors.toList());
             } catch (Exception ignore) {
                 startParamList = JSONUtils.toList(startParams, Property.class);
+            }
+            if (startParamList != null) {
+                startParamList = startParamList.stream()
+                        .filter(property -> property != null
+                                && !PropertySensitiveUtils.isSensitiveValuePlaceholder(property.getValue()))
+                        .collect(Collectors.toList());
             }
         }
         return startParamList;

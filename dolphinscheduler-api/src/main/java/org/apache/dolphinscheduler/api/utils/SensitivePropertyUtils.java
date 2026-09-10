@@ -72,7 +72,7 @@ public class SensitivePropertyUtils {
                 PropertySensitiveUtils.mergeSensitiveValuePlaceholders(submittedProperties, existingProperties));
     }
 
-    public String maskGlobalParams(String globalParams) {
+    private String maskGlobalParams(String globalParams) {
         List<Property> properties = GlobalParameterUtils.deserializeGlobalParameter(globalParams);
         if (CollectionUtils.isEmpty(properties)) {
             return globalParams;
@@ -80,11 +80,11 @@ public class SensitivePropertyUtils {
         return GlobalParameterUtils.serializeGlobalParameter(PropertySensitiveUtils.maskSensitiveValues(properties));
     }
 
-    public List<Property> maskSensitiveValues(List<Property> properties) {
+    private List<Property> maskSensitiveValues(List<Property> properties) {
         return PropertySensitiveUtils.maskSensitiveValues(properties);
     }
 
-    public DagData maskDagData(DagData dagData) {
+    private DagData maskDagData(DagData dagData) {
         if (dagData == null) {
             return null;
         }
@@ -95,7 +95,7 @@ public class SensitivePropertyUtils {
         return dagData;
     }
 
-    public WorkflowDefinition maskWorkflowDefinition(WorkflowDefinition workflowDefinition) {
+    private WorkflowDefinition maskWorkflowDefinition(WorkflowDefinition workflowDefinition) {
         if (workflowDefinition == null) {
             return null;
         }
@@ -109,7 +109,7 @@ public class SensitivePropertyUtils {
         return workflowDefinition;
     }
 
-    public TaskDefinition maskTaskDefinition(TaskDefinition taskDefinition) {
+    private TaskDefinition maskTaskDefinition(TaskDefinition taskDefinition) {
         if (taskDefinition == null) {
             return null;
         }
@@ -118,7 +118,7 @@ public class SensitivePropertyUtils {
         return taskDefinition;
     }
 
-    public TaskInstance maskTaskInstance(TaskInstance taskInstance) {
+    private TaskInstance maskTaskInstance(TaskInstance taskInstance) {
         if (taskInstance == null) {
             return null;
         }
@@ -135,11 +135,7 @@ public class SensitivePropertyUtils {
         if (workflowDefinition == null) {
             return null;
         }
-        T copy = JSONUtils.parseObject(JSONUtils.toJsonString(workflowDefinition),
-                (Class<T>) workflowDefinition.getClass());
-        if (copy == null) {
-            return (T) maskWorkflowDefinition(workflowDefinition);
-        }
+        T copy = copyOrThrow(workflowDefinition, (Class<T>) workflowDefinition.getClass(), "workflow definition");
         return (T) maskWorkflowDefinition(copy);
     }
 
@@ -151,11 +147,7 @@ public class SensitivePropertyUtils {
         if (taskDefinition == null) {
             return null;
         }
-        T copy = JSONUtils.parseObject(JSONUtils.toJsonString(taskDefinition),
-                (Class<T>) taskDefinition.getClass());
-        if (copy == null) {
-            return (T) maskTaskDefinition(taskDefinition);
-        }
+        T copy = copyOrThrow(taskDefinition, (Class<T>) taskDefinition.getClass(), "task definition");
         return (T) maskTaskDefinition(copy);
     }
 
@@ -165,10 +157,9 @@ public class SensitivePropertyUtils {
         }
         DagData copy = JSONUtils.parseObject(JSONUtils.toJsonString(dagData), DagData.class);
         if (copy == null) {
-            copy = new DagData(copyAndMaskWorkflowDefinition(dagData.getWorkflowDefinition()),
+            return new DagData(copyAndMaskWorkflowDefinition(dagData.getWorkflowDefinition()),
                     dagData.getWorkflowTaskRelationList(),
                     copyTaskDefinitionList(dagData.getTaskDefinitionList()));
-            return copy;
         }
         return maskDagData(copy);
     }
@@ -177,10 +168,7 @@ public class SensitivePropertyUtils {
         if (workflowInstance == null) {
             return null;
         }
-        WorkflowInstance copy = JSONUtils.parseObject(JSONUtils.toJsonString(workflowInstance), WorkflowInstance.class);
-        if (copy == null) {
-            return workflowInstance;
-        }
+        WorkflowInstance copy = copyOrThrow(workflowInstance, WorkflowInstance.class, "workflow instance");
         copy.setGlobalParams(maskGlobalParams(copy.getGlobalParams()));
         copy.setVarPool(maskVarPool(copy.getVarPool()));
         if (copy.getDagData() != null) {
@@ -197,11 +185,7 @@ public class SensitivePropertyUtils {
         if (taskInstance == null) {
             return null;
         }
-        T copy = JSONUtils.parseObject(JSONUtils.toJsonString(taskInstance),
-                (Class<T>) taskInstance.getClass());
-        if (copy == null) {
-            return (T) maskTaskInstance(taskInstance);
-        }
+        T copy = copyOrThrow(taskInstance, (Class<T>) taskInstance.getClass(), "task instance");
         return (T) maskTaskInstance(copy);
     }
 
@@ -367,11 +351,11 @@ public class SensitivePropertyUtils {
         });
     }
 
-    public String maskLocalParamsInTaskParams(String taskParams) {
+    private String maskLocalParamsInTaskParams(String taskParams) {
         return transformLocalParamsInTaskParams(taskParams, PropertySensitiveUtils::maskSensitiveValues);
     }
 
-    public String maskVarPool(String varPool) {
+    private String maskVarPool(String varPool) {
         if (StringUtils.isEmpty(varPool)) {
             return varPool;
         }
@@ -419,5 +403,13 @@ public class SensitivePropertyUtils {
         List<Property> localParams = JSONUtils.toList(localParamsNode.toString(), Property.class);
         taskParamsNode.set(LOCAL_PARAMS, JSONUtils.toJsonNode(transformFunction.apply(localParams)));
         return JSONUtils.toJsonString(taskParamsNode);
+    }
+
+    private <T> T copyOrThrow(T source, Class<T> type, String name) {
+        T copy = JSONUtils.parseObject(JSONUtils.toJsonString(source), type);
+        if (copy == null) {
+            throw new IllegalStateException("Failed to copy " + name + " for masking");
+        }
+        return copy;
     }
 }

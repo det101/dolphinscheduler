@@ -112,58 +112,6 @@ class SensitivePropertyUtilsTest {
     }
 
     @Test
-    void maskWorkflowDefinitionDoesNotMutateSourceListSemantics() {
-        WorkflowDefinition workflowDefinition = new WorkflowDefinition();
-        workflowDefinition.setGlobalParams(GlobalParameterUtils.serializeGlobalParameter(
-                Collections.singletonList(sensitive("pwd", "Secret123"))));
-
-        SensitivePropertyUtils.maskWorkflowDefinition(workflowDefinition);
-        Assertions.assertTrue(workflowDefinition.getGlobalParams().contains(TaskConstants.SENSITIVE_DATA_MASK));
-        Assertions.assertFalse(workflowDefinition.getGlobalParams().contains("Secret123"));
-    }
-
-    @Test
-    void maskLocalParamsInTaskParams() {
-        String taskParams = "{\"localParams\":[{\"prop\":\"token\",\"direct\":\"IN\",\"type\":\"VARCHAR\","
-                + "\"value\":\"abc\",\"sensitive\":true}]}";
-        String masked = SensitivePropertyUtils.maskLocalParamsInTaskParams(taskParams);
-        Assertions.assertTrue(masked.contains(TaskConstants.SENSITIVE_DATA_MASK));
-        Assertions.assertFalse(masked.contains("\"abc\""));
-    }
-
-    @Test
-    void maskTaskDefinition() {
-        TaskDefinition taskDefinition = new TaskDefinition();
-        taskDefinition.setTaskParams("{\"localParams\":[{\"prop\":\"token\",\"direct\":\"IN\",\"type\":\"VARCHAR\","
-                + "\"value\":\"abc\",\"sensitive\":true}]}");
-        SensitivePropertyUtils.maskTaskDefinition(taskDefinition);
-        Assertions.assertTrue(taskDefinition.getTaskParams().contains(TaskConstants.SENSITIVE_DATA_MASK));
-    }
-
-    @Test
-    void maskWorkflowDefinitionClearsCachedGlobalParamMap() {
-        WorkflowDefinition workflowDefinition = new WorkflowDefinition();
-        workflowDefinition.setGlobalParams(GlobalParameterUtils.serializeGlobalParameter(
-                Collections.singletonList(sensitive("pwd", "Secret123"))));
-        Assertions.assertEquals("Secret123", workflowDefinition.getGlobalParamMap().get("pwd"));
-
-        SensitivePropertyUtils.maskWorkflowDefinition(workflowDefinition);
-        Assertions.assertEquals(TaskConstants.SENSITIVE_DATA_MASK, workflowDefinition.getGlobalParamMap().get("pwd"));
-    }
-
-    @Test
-    void copyAndMaskTaskDefinitionDoesNotMutateOriginal() {
-        TaskDefinition taskDefinition = new TaskDefinition();
-        taskDefinition.setTaskParams("{\"localParams\":[{\"prop\":\"token\",\"direct\":\"IN\",\"type\":\"VARCHAR\","
-                + "\"value\":\"abc\",\"sensitive\":true}]}");
-
-        TaskDefinition masked = SensitivePropertyUtils.copyAndMaskTaskDefinition(taskDefinition);
-        Assertions.assertTrue(masked.getTaskParams().contains(TaskConstants.SENSITIVE_DATA_MASK));
-        Assertions.assertTrue(taskDefinition.getTaskParams().contains("abc"));
-        Assertions.assertNotSame(taskDefinition, masked);
-    }
-
-    @Test
     void copyAndMaskWorkflowDefinitionDoesNotMutatePersisted() {
         WorkflowDefinition persisted = new WorkflowDefinition();
         persisted.setGlobalParams(GlobalParameterUtils.serializeGlobalParameter(
@@ -176,6 +124,30 @@ class SensitivePropertyUtilsTest {
         Assertions.assertTrue(masked.getGlobalParams().contains(TaskConstants.SENSITIVE_DATA_MASK));
         Assertions.assertFalse(masked.getGlobalParams().contains("Secret123"));
         Assertions.assertNotSame(persisted, masked);
+    }
+
+    @Test
+    void copyAndMaskWorkflowDefinitionClearsCachedGlobalParamMapOnCopy() {
+        WorkflowDefinition persisted = new WorkflowDefinition();
+        persisted.setGlobalParams(GlobalParameterUtils.serializeGlobalParameter(
+                Collections.singletonList(sensitive("pwd", "Secret123"))));
+        Assertions.assertEquals("Secret123", persisted.getGlobalParamMap().get("pwd"));
+
+        WorkflowDefinition masked = SensitivePropertyUtils.copyAndMaskWorkflowDefinition(persisted);
+        Assertions.assertEquals("Secret123", persisted.getGlobalParamMap().get("pwd"));
+        Assertions.assertEquals(TaskConstants.SENSITIVE_DATA_MASK, masked.getGlobalParamMap().get("pwd"));
+    }
+
+    @Test
+    void copyAndMaskTaskDefinitionDoesNotMutateOriginal() {
+        TaskDefinition taskDefinition = new TaskDefinition();
+        taskDefinition.setTaskParams("{\"localParams\":[{\"prop\":\"token\",\"direct\":\"IN\",\"type\":\"VARCHAR\","
+                + "\"value\":\"abc\",\"sensitive\":true}]}");
+
+        TaskDefinition masked = SensitivePropertyUtils.copyAndMaskTaskDefinition(taskDefinition);
+        Assertions.assertTrue(masked.getTaskParams().contains(TaskConstants.SENSITIVE_DATA_MASK));
+        Assertions.assertTrue(taskDefinition.getTaskParams().contains("abc"));
+        Assertions.assertNotSame(taskDefinition, masked);
     }
 
     @Test
