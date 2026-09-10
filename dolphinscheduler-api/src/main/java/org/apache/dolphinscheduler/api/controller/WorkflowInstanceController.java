@@ -29,6 +29,7 @@ import org.apache.dolphinscheduler.api.exceptions.ApiException;
 import org.apache.dolphinscheduler.api.service.WorkflowInstanceService;
 import org.apache.dolphinscheduler.api.utils.PageInfo;
 import org.apache.dolphinscheduler.api.utils.Result;
+import org.apache.dolphinscheduler.api.utils.SensitivePropertyUtils;
 import org.apache.dolphinscheduler.api.vo.WorkflowInstanceSummaryVO;
 import org.apache.dolphinscheduler.common.constants.Constants;
 import org.apache.dolphinscheduler.common.enums.WorkflowExecutionStatus;
@@ -146,7 +147,7 @@ public class WorkflowInstanceController extends BaseController {
                                                                                  @PathVariable("id") Integer id) {
         WorkflowInstanceTaskListDTO taskList =
                 workflowInstanceService.queryTaskListByWorkflowInstanceId(loginUser, projectCode, id);
-        return Result.success(taskList);
+        return Result.success(SensitivePropertyUtils.copyAndMaskWorkflowInstanceTaskList(taskList));
     }
 
     /**
@@ -189,7 +190,7 @@ public class WorkflowInstanceController extends BaseController {
                                                              @RequestParam(value = "timeout", required = false, defaultValue = "0") int timeout) {
         WorkflowDefinition workflowDefinition = workflowInstanceService.updateWorkflowInstance(loginUser, projectCode,
                 id, taskRelationJson, taskDefinitionJson, scheduleTime, syncDefine, globalParams, locations, timeout);
-        return Result.success(workflowDefinition);
+        return Result.success(SensitivePropertyUtils.copyAndMaskWorkflowDefinition(workflowDefinition));
     }
 
     /**
@@ -212,7 +213,7 @@ public class WorkflowInstanceController extends BaseController {
                                                               @PathVariable("id") Integer id) {
         WorkflowInstance workflowInstance =
                 workflowInstanceService.queryWorkflowInstanceById(loginUser, projectCode, id);
-        return Result.success(workflowInstance);
+        return Result.success(SensitivePropertyUtils.copyAndMaskWorkflowInstance(workflowInstance));
     }
 
     /**
@@ -333,7 +334,7 @@ public class WorkflowInstanceController extends BaseController {
                                                               @Parameter(name = "projectCode", description = "PROJECT_CODE", required = true) @PathVariable long projectCode,
                                                               @PathVariable("id") Integer id) {
         WorkflowInstanceVariablesDTO variables = workflowInstanceService.viewVariables(loginUser, projectCode, id);
-        return Result.success(variables);
+        return Result.success(SensitivePropertyUtils.copyAndMaskWorkflowInstanceVariables(variables));
     }
 
     /**

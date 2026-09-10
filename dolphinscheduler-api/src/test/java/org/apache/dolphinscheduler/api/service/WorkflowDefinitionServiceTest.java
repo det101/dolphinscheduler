@@ -456,8 +456,9 @@ public class WorkflowDefinitionServiceTest extends BaseServiceTestTool {
         Assertions.assertTrue(fromService.getGlobalParams().contains("Secret123"));
         Assertions.assertSame(versionLog, fromService);
 
-        SensitivePropertyUtils.maskApiResponseData(result);
-        WorkflowDefinitionLog masked = pageInfo.getTotalList().get(0);
+        PageInfo<WorkflowDefinitionLog> maskedPage =
+                SensitivePropertyUtils.copyAndMaskWorkflowDefinitionPage(pageInfo);
+        WorkflowDefinitionLog masked = maskedPage.getTotalList().get(0);
         Assertions.assertTrue(masked.getGlobalParams().contains(TaskConstants.SENSITIVE_DATA_MASK));
         Assertions.assertFalse(masked.getGlobalParams().contains("Secret123"));
         Assertions.assertTrue(versionLog.getGlobalParams().contains("Secret123"));
@@ -998,13 +999,12 @@ public class WorkflowDefinitionServiceTest extends BaseServiceTestTool {
         Assertions.assertTrue(persisted.getValue().getGlobalParams().contains("Secret123"));
         Assertions.assertSame(created, persisted.getValue());
 
-        Result<WorkflowDefinition> response = Result.success(created);
-        SensitivePropertyUtils.maskApiResponseData(response);
+        WorkflowDefinition masked = SensitivePropertyUtils.copyAndMaskWorkflowDefinition(created);
 
-        Assertions.assertTrue(response.getData().getGlobalParams().contains(TaskConstants.SENSITIVE_DATA_MASK));
-        Assertions.assertFalse(response.getData().getGlobalParams().contains("Secret123"));
+        Assertions.assertTrue(masked.getGlobalParams().contains(TaskConstants.SENSITIVE_DATA_MASK));
+        Assertions.assertFalse(masked.getGlobalParams().contains("Secret123"));
         Assertions.assertTrue(created.getGlobalParams().contains("Secret123"));
-        Assertions.assertNotSame(created, response.getData());
+        Assertions.assertNotSame(created, masked);
     }
 
     @Test
@@ -1257,13 +1257,12 @@ public class WorkflowDefinitionServiceTest extends BaseServiceTestTool {
         Assertions.assertTrue(persisted.getValue().getGlobalParams().contains("new-secret"));
         Assertions.assertSame(updated, persisted.getValue());
 
-        Result<WorkflowDefinition> response = Result.success(updated);
-        SensitivePropertyUtils.maskApiResponseData(response);
+        WorkflowDefinition masked = SensitivePropertyUtils.copyAndMaskWorkflowDefinition(updated);
 
-        Assertions.assertTrue(response.getData().getGlobalParams().contains(TaskConstants.SENSITIVE_DATA_MASK));
-        Assertions.assertFalse(response.getData().getGlobalParams().contains("new-secret"));
+        Assertions.assertTrue(masked.getGlobalParams().contains(TaskConstants.SENSITIVE_DATA_MASK));
+        Assertions.assertFalse(masked.getGlobalParams().contains("new-secret"));
         Assertions.assertTrue(updated.getGlobalParams().contains("new-secret"));
-        Assertions.assertNotSame(updated, response.getData());
+        Assertions.assertNotSame(updated, masked);
     }
 
     @Test

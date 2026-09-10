@@ -18,19 +18,23 @@
 package org.apache.dolphinscheduler.api.utils;
 
 import static org.apache.dolphinscheduler.common.constants.Constants.LOCAL_PARAMS;
+import static org.apache.dolphinscheduler.plugin.task.api.TaskConstants.LOCAL_PARAMS_LIST;
 
 import org.apache.dolphinscheduler.api.dto.workflow.WorkflowDefinitionVariablesDTO;
+import org.apache.dolphinscheduler.api.dto.workflowInstance.WorkflowInstanceTaskListDTO;
 import org.apache.dolphinscheduler.api.dto.workflowInstance.WorkflowInstanceVariablesDTO;
 import org.apache.dolphinscheduler.api.enums.Status;
 import org.apache.dolphinscheduler.api.exceptions.ServiceException;
 import org.apache.dolphinscheduler.common.utils.JSONUtils;
 import org.apache.dolphinscheduler.dao.entity.DagData;
 import org.apache.dolphinscheduler.dao.entity.TaskDefinition;
+import org.apache.dolphinscheduler.dao.entity.TaskInstance;
 import org.apache.dolphinscheduler.dao.entity.WorkflowDefinition;
 import org.apache.dolphinscheduler.dao.entity.WorkflowInstance;
 import org.apache.dolphinscheduler.plugin.task.api.model.Property;
 import org.apache.dolphinscheduler.plugin.task.api.utils.GlobalParameterUtils;
 import org.apache.dolphinscheduler.plugin.task.api.utils.PropertySensitiveUtils;
+import org.apache.dolphinscheduler.plugin.task.api.utils.VarPoolUtils;
 
 import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -51,8 +55,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
  * API-layer helpers for sensitive {@link Property} masking and keep-original merge.
  * <p>
  * PR1 of DSIP-105: no encryption. Crypto (PasswordUtils) belongs to a follow-up PR.
- * HTTP responses are masked at the outbound boundary via {@link #maskApiResponseData};
- * persistence and in-process service results stay plaintext.
+ * Controllers call {@code copyAndMask*} on HTTP responses; persistence and in-process
+ * service results stay plaintext.
  */
 @UtilityClass
 public class SensitivePropertyUtils {
@@ -114,6 +118,15 @@ public class SensitivePropertyUtils {
         return taskDefinition;
     }
 
+    public TaskInstance maskTaskInstance(TaskInstance taskInstance) {
+        if (taskInstance == null) {
+            return null;
+        }
+        taskInstance.setTaskParams(maskLocalParamsInTaskParams(taskInstance.getTaskParams()));
+        taskInstance.setVarPool(maskVarPool(taskInstance.getVarPool()));
+        return taskInstance;
+    }
+
     /**
      * JSON deep-copy then mask, so MyBatis-mapped entities (e.g. version list records) stay unchanged.
      */
@@ -169,6 +182,7 @@ public class SensitivePropertyUtils {
             return workflowInstance;
         }
         copy.setGlobalParams(maskGlobalParams(copy.getGlobalParams()));
+        copy.setVarPool(maskVarPool(copy.getVarPool()));
         if (copy.getDagData() != null) {
             maskDagData(copy.getDagData());
         }
@@ -176,119 +190,162 @@ public class SensitivePropertyUtils {
     }
 
     /**
-     * Whether {@code data} can carry sensitive {@link Property} values that HTTP must mask.
-     * Unrelated {@link Result} payloads (login, cluster, user, …) should skip copy/mask.
-     */
-    public boolean containsSensitivePropertyPayload(Object data) {
-        if (data == null) {
-            return false;
-        }
-        if (data instanceof Result) {
-            return containsSensitivePropertyPayload(((Result<?>) data).getData());
-        }
-        if (data instanceof PageInfo) {
-            return containsSensitivePropertyPayload(((PageInfo<?>) data).getTotalList());
-        }
-        if (data instanceof WorkflowDefinitionVariablesDTO
-                || data instanceof WorkflowInstanceVariablesDTO
-                || data instanceof WorkflowInstance
-                || data instanceof DagData
-                || data instanceof WorkflowDefinition
-                || data instanceof TaskDefinition
-                || data instanceof Property) {
-            return true;
-        }
-        if (data instanceof List) {
-            for (Object item : (List<?>) data) {
-                if (containsSensitivePropertyPayload(item)) {
-                    return true;
-                }
-            }
-            return false;
-        }
-        if (data instanceof Map) {
-            for (Object value : ((Map<?, ?>) data).values()) {
-                if (containsSensitivePropertyPayload(value)) {
-                    return true;
-                }
-            }
-            return false;
-        }
-        return false;
-    }
-
-    /**
-     * Deep-copy then mask types that can appear in {@code Result.data}.
-     * Unrelated payloads are returned as-is without copying. Persistence objects are not mutated.
+     * JSON deep-copy then mask, so MyBatis-mapped task instances stay unchanged.
      */
     @SuppressWarnings("unchecked")
-    public Object maskApiResponseData(Object data) {
-        if (data == null) {
+    public <T extends TaskInstance> T copyAndMaskTaskInstance(T taskInstance) {
+        if (taskInstance == null) {
             return null;
         }
-        if (data instanceof Result) {
-            Result<Object> result = (Result<Object>) data;
-            result.setData(maskApiResponseData(result.getData()));
-            return result;
+        T copy = JSONUtils.parseObject(JSONUtils.toJsonString(taskInstance),
+                (Class<T>) taskInstance.getClass());
+        if (copy == null) {
+            return (T) maskTaskInstance(taskInstance);
         }
-        if (!containsSensitivePropertyPayload(data)) {
-            return data;
+        return (T) maskTaskInstance(copy);
+    }
+
+    public <T extends TaskInstance> List<T> copyAndMaskTaskInstances(List<T> taskInstances) {
+        if (CollectionUtils.isEmpty(taskInstances)) {
+            return taskInstances;
         }
-        if (data instanceof PageInfo) {
-            PageInfo<Object> pageInfo = (PageInfo<Object>) data;
-            List<Object> totalList = pageInfo.getTotalList();
-            if (CollectionUtils.isNotEmpty(totalList)) {
-                pageInfo.setTotalList((List<Object>) maskApiResponseData(totalList));
+        List<T> masked = new ArrayList<>(taskInstances.size());
+        for (T taskInstance : taskInstances) {
+            masked.add(copyAndMaskTaskInstance(taskInstance));
+        }
+        return masked;
+    }
+
+    public <T extends TaskInstance> PageInfo<T> copyAndMaskTaskInstancePage(PageInfo<T> pageInfo) {
+        if (pageInfo == null) {
+            return null;
+        }
+        PageInfo<T> copy = new PageInfo<>();
+        copy.setTotal(pageInfo.getTotal());
+        copy.setPageSize(pageInfo.getPageSize());
+        copy.setCurrentPage(pageInfo.getCurrentPage());
+        copy.setPageNo(pageInfo.getPageNo());
+        copy.setTotalList(copyAndMaskTaskInstances(pageInfo.getTotalList()));
+        return copy;
+    }
+
+    public WorkflowInstanceTaskListDTO copyAndMaskWorkflowInstanceTaskList(WorkflowInstanceTaskListDTO dto) {
+        if (dto == null) {
+            return null;
+        }
+        return new WorkflowInstanceTaskListDTO(
+                dto.getWorkflowInstanceState(),
+                copyAndMaskTaskInstances(dto.getTaskList()));
+    }
+
+    public List<DagData> copyAndMaskDagDataList(List<DagData> dagDataList) {
+        if (CollectionUtils.isEmpty(dagDataList)) {
+            return dagDataList;
+        }
+        List<DagData> masked = new ArrayList<>(dagDataList.size());
+        for (DagData dagData : dagDataList) {
+            masked.add(copyAndMaskDagData(dagData));
+        }
+        return masked;
+    }
+
+    public <T extends WorkflowDefinition> List<T> copyAndMaskWorkflowDefinitions(List<T> workflowDefinitions) {
+        if (CollectionUtils.isEmpty(workflowDefinitions)) {
+            return workflowDefinitions;
+        }
+        List<T> masked = new ArrayList<>(workflowDefinitions.size());
+        for (T workflowDefinition : workflowDefinitions) {
+            masked.add(copyAndMaskWorkflowDefinition(workflowDefinition));
+        }
+        return masked;
+    }
+
+    public <T extends TaskDefinition> List<T> copyAndMaskTaskDefinitions(List<T> taskDefinitions) {
+        if (CollectionUtils.isEmpty(taskDefinitions)) {
+            return taskDefinitions;
+        }
+        List<T> masked = new ArrayList<>(taskDefinitions.size());
+        for (T taskDefinition : taskDefinitions) {
+            masked.add(copyAndMaskTaskDefinition(taskDefinition));
+        }
+        return masked;
+    }
+
+    public Map<Long, List<TaskDefinition>> copyAndMaskTaskDefinitionMap(Map<Long, List<TaskDefinition>> taskDefinitionMap) {
+        if (taskDefinitionMap == null) {
+            return null;
+        }
+        Map<Long, List<TaskDefinition>> masked = new LinkedHashMap<>();
+        for (Map.Entry<Long, List<TaskDefinition>> entry : taskDefinitionMap.entrySet()) {
+            masked.put(entry.getKey(), copyAndMaskTaskDefinitions(entry.getValue()));
+        }
+        return masked;
+    }
+
+    public <T extends WorkflowDefinition> PageInfo<T> copyAndMaskWorkflowDefinitionPage(PageInfo<T> pageInfo) {
+        if (pageInfo == null) {
+            return null;
+        }
+        PageInfo<T> copy = new PageInfo<>();
+        copy.setTotal(pageInfo.getTotal());
+        copy.setPageSize(pageInfo.getPageSize());
+        copy.setCurrentPage(pageInfo.getCurrentPage());
+        copy.setPageNo(pageInfo.getPageNo());
+        copy.setTotalList(copyAndMaskWorkflowDefinitions(pageInfo.getTotalList()));
+        return copy;
+    }
+
+    public <T extends TaskDefinition> PageInfo<T> copyAndMaskTaskDefinitionPage(PageInfo<T> pageInfo) {
+        if (pageInfo == null) {
+            return null;
+        }
+        PageInfo<T> copy = new PageInfo<>();
+        copy.setTotal(pageInfo.getTotal());
+        copy.setPageSize(pageInfo.getPageSize());
+        copy.setCurrentPage(pageInfo.getCurrentPage());
+        copy.setPageNo(pageInfo.getPageNo());
+        copy.setTotalList(copyAndMaskTaskDefinitions(pageInfo.getTotalList()));
+        return copy;
+    }
+
+    public WorkflowDefinitionVariablesDTO copyAndMaskWorkflowDefinitionVariables(WorkflowDefinitionVariablesDTO dto) {
+        if (dto == null) {
+            return null;
+        }
+        return new WorkflowDefinitionVariablesDTO(
+                maskSensitiveValues(dto.getGlobalParams()),
+                copyAndMaskLocalParamsMap(dto.getLocalParams()));
+    }
+
+    public WorkflowInstanceVariablesDTO copyAndMaskWorkflowInstanceVariables(WorkflowInstanceVariablesDTO dto) {
+        if (dto == null) {
+            return null;
+        }
+        return new WorkflowInstanceVariablesDTO(
+                maskSensitiveValues(dto.getGlobalParams()),
+                copyAndMaskLocalParamsMap(dto.getLocalParams()));
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Map<String, Object>> copyAndMaskLocalParamsMap(Map<String, Map<String, Object>> localParams) {
+        if (localParams == null) {
+            return null;
+        }
+        Map<String, Map<String, Object>> masked = new LinkedHashMap<>();
+        for (Map.Entry<String, Map<String, Object>> entry : localParams.entrySet()) {
+            Map<String, Object> inner = entry.getValue();
+            if (inner == null) {
+                masked.put(entry.getKey(), null);
+                continue;
             }
-            return pageInfo;
-        }
-        if (data instanceof WorkflowDefinitionVariablesDTO) {
-            WorkflowDefinitionVariablesDTO dto = (WorkflowDefinitionVariablesDTO) data;
-            dto.setGlobalParams(maskSensitiveValues(dto.getGlobalParams()));
-            dto.setLocalParams((Map<String, Map<String, Object>>) maskApiResponseData(dto.getLocalParams()));
-            return dto;
-        }
-        if (data instanceof WorkflowInstanceVariablesDTO) {
-            WorkflowInstanceVariablesDTO dto = (WorkflowInstanceVariablesDTO) data;
-            dto.setGlobalParams(maskSensitiveValues(dto.getGlobalParams()));
-            dto.setLocalParams((Map<String, Map<String, Object>>) maskApiResponseData(dto.getLocalParams()));
-            return dto;
-        }
-        if (data instanceof WorkflowInstance) {
-            return copyAndMaskWorkflowInstance((WorkflowInstance) data);
-        }
-        if (data instanceof DagData) {
-            return copyAndMaskDagData((DagData) data);
-        }
-        if (data instanceof WorkflowDefinition) {
-            return copyAndMaskWorkflowDefinition((WorkflowDefinition) data);
-        }
-        if (data instanceof TaskDefinition) {
-            return copyAndMaskTaskDefinition((TaskDefinition) data);
-        }
-        if (data instanceof List) {
-            List<?> list = (List<?>) data;
-            if (CollectionUtils.isEmpty(list)) {
-                return data;
+            Map<String, Object> copied = new LinkedHashMap<>(inner);
+            Object localParamsList = copied.get(LOCAL_PARAMS_LIST);
+            if (localParamsList instanceof List) {
+                copied.put(LOCAL_PARAMS_LIST, maskSensitiveValues((List<Property>) localParamsList));
             }
-            if (list.get(0) instanceof Property) {
-                return maskSensitiveValues((List<Property>) data);
-            }
-            List<Object> masked = new ArrayList<>(list.size());
-            for (Object item : list) {
-                masked.add(maskApiResponseData(item));
-            }
-            return masked;
+            masked.put(entry.getKey(), copied);
         }
-        if (data instanceof Map) {
-            Map<?, ?> map = (Map<?, ?>) data;
-            Map<Object, Object> masked = new LinkedHashMap<>();
-            for (Map.Entry<?, ?> entry : map.entrySet()) {
-                masked.put(entry.getKey(), maskApiResponseData(entry.getValue()));
-            }
-            return masked;
-        }
-        return data;
+        return masked;
     }
 
     private List<TaskDefinition> copyTaskDefinitionList(List<TaskDefinition> taskDefinitions) {
@@ -312,6 +369,17 @@ public class SensitivePropertyUtils {
 
     public String maskLocalParamsInTaskParams(String taskParams) {
         return transformLocalParamsInTaskParams(taskParams, PropertySensitiveUtils::maskSensitiveValues);
+    }
+
+    public String maskVarPool(String varPool) {
+        if (StringUtils.isEmpty(varPool)) {
+            return varPool;
+        }
+        List<Property> properties = VarPoolUtils.deserializeVarPool(varPool);
+        if (CollectionUtils.isEmpty(properties)) {
+            return varPool;
+        }
+        return VarPoolUtils.serializeVarPool(maskSensitiveValues(properties));
     }
 
     public List<Property> getLocalParams(String taskParams) {

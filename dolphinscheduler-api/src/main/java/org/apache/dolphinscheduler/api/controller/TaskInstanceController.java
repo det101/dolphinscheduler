@@ -26,9 +26,12 @@ import org.apache.dolphinscheduler.api.audit.OperatorLog;
 import org.apache.dolphinscheduler.api.audit.enums.AuditType;
 import org.apache.dolphinscheduler.api.exceptions.ApiException;
 import org.apache.dolphinscheduler.api.service.TaskInstanceService;
+import org.apache.dolphinscheduler.api.utils.PageInfo;
 import org.apache.dolphinscheduler.api.utils.Result;
+import org.apache.dolphinscheduler.api.utils.SensitivePropertyUtils;
 import org.apache.dolphinscheduler.common.constants.Constants;
 import org.apache.dolphinscheduler.common.enums.TaskExecuteType;
+import org.apache.dolphinscheduler.dao.entity.TaskInstance;
 import org.apache.dolphinscheduler.dao.entity.User;
 import org.apache.dolphinscheduler.plugin.task.api.enums.TaskExecutionStatus;
 import org.apache.dolphinscheduler.plugin.task.api.utils.ParameterUtils;
@@ -112,7 +115,7 @@ public class TaskInstanceController extends BaseController {
                                       @RequestParam("pageSize") Integer pageSize) {
         checkPageParams(pageNo, pageSize);
         searchVal = ParameterUtils.handleEscapes(searchVal);
-        return taskInstanceService.queryTaskListPaging(
+        Result result = taskInstanceService.queryTaskListPaging(
                 loginUser,
                 projectCode,
                 workflowInstanceId,
@@ -129,6 +132,10 @@ public class TaskInstanceController extends BaseController {
                 taskExecuteType,
                 pageNo,
                 pageSize);
+        @SuppressWarnings("unchecked")
+        PageInfo<TaskInstance> pageInfo = (PageInfo<TaskInstance>) result.getData();
+        result.setData(SensitivePropertyUtils.copyAndMaskTaskInstancePage(pageInfo));
+        return result;
     }
 
     /**

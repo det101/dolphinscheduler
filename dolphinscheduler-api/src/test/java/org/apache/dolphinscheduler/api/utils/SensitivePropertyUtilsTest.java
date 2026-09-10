@@ -19,6 +19,7 @@ package org.apache.dolphinscheduler.api.utils;
 
 import org.apache.dolphinscheduler.api.exceptions.ServiceException;
 import org.apache.dolphinscheduler.dao.entity.TaskDefinition;
+import org.apache.dolphinscheduler.dao.entity.TaskInstance;
 import org.apache.dolphinscheduler.dao.entity.WorkflowDefinition;
 import org.apache.dolphinscheduler.dao.entity.WorkflowInstance;
 import org.apache.dolphinscheduler.plugin.task.api.TaskConstants;
@@ -27,7 +28,6 @@ import org.apache.dolphinscheduler.plugin.task.api.enums.Direct;
 import org.apache.dolphinscheduler.plugin.task.api.model.Property;
 import org.apache.dolphinscheduler.plugin.task.api.utils.GlobalParameterUtils;
 
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -164,75 +164,76 @@ class SensitivePropertyUtilsTest {
     }
 
     @Test
-    void maskApiResponseDataMasksCreateUpdateWorkflowDefinitionWithoutMutatingPersisted() {
+    void copyAndMaskWorkflowDefinitionDoesNotMutatePersisted() {
         WorkflowDefinition persisted = new WorkflowDefinition();
         persisted.setGlobalParams(GlobalParameterUtils.serializeGlobalParameter(
                 Collections.singletonList(sensitive("pwd", "Secret123"))));
-        Result<WorkflowDefinition> createResponse = Result.success(persisted);
 
-        SensitivePropertyUtils.maskApiResponseData(createResponse);
+        WorkflowDefinition masked = SensitivePropertyUtils.copyAndMaskWorkflowDefinition(persisted);
 
         Assertions.assertTrue(persisted.getGlobalParams().contains("Secret123"));
         Assertions.assertFalse(persisted.getGlobalParams().contains(TaskConstants.SENSITIVE_DATA_MASK));
-        Assertions.assertTrue(createResponse.getData().getGlobalParams().contains(TaskConstants.SENSITIVE_DATA_MASK));
-        Assertions.assertFalse(createResponse.getData().getGlobalParams().contains("Secret123"));
-        Assertions.assertNotSame(persisted, createResponse.getData());
+        Assertions.assertTrue(masked.getGlobalParams().contains(TaskConstants.SENSITIVE_DATA_MASK));
+        Assertions.assertFalse(masked.getGlobalParams().contains("Secret123"));
+        Assertions.assertNotSame(persisted, masked);
     }
 
     @Test
-    void maskApiResponseDataMasksWorkflowInstanceGlobalParamsWithoutMutatingPersisted() {
+    void copyAndMaskWorkflowInstanceDoesNotMutatePersisted() {
         WorkflowInstance persisted = new WorkflowInstance();
         persisted.setGlobalParams(GlobalParameterUtils.serializeGlobalParameter(
                 Collections.singletonList(sensitive("pwd", "Secret123"))));
-        Result<WorkflowInstance> response = Result.success(persisted);
 
-        SensitivePropertyUtils.maskApiResponseData(response);
+        WorkflowInstance masked = SensitivePropertyUtils.copyAndMaskWorkflowInstance(persisted);
 
         Assertions.assertTrue(persisted.getGlobalParams().contains("Secret123"));
-        Assertions.assertTrue(response.getData().getGlobalParams().contains(TaskConstants.SENSITIVE_DATA_MASK));
-        Assertions.assertNotSame(persisted, response.getData());
+        Assertions.assertTrue(masked.getGlobalParams().contains(TaskConstants.SENSITIVE_DATA_MASK));
+        Assertions.assertNotSame(persisted, masked);
     }
 
     @Test
-    void maskApiResponseDataLeavesUnrelatedPayloadUnchanged() {
-        Result<Integer> result = Result.success(42);
-        SensitivePropertyUtils.maskApiResponseData(result);
-        Assertions.assertEquals(42, result.getData());
-        Assertions.assertFalse(SensitivePropertyUtils.containsSensitivePropertyPayload(result));
-    }
-
-    @Test
-    void maskApiResponseDataDoesNotCopyUnrelatedPageInfoOrMap() {
-        PageInfo<Integer> pageInfo = new PageInfo<>();
-        List<Integer> rows = Arrays.asList(1, 2);
-        pageInfo.setTotalList(rows);
-
-        Assertions.assertFalse(SensitivePropertyUtils.containsSensitivePropertyPayload(pageInfo));
-        Assertions.assertSame(pageInfo, SensitivePropertyUtils.maskApiResponseData(pageInfo));
-        Assertions.assertSame(rows, pageInfo.getTotalList());
-
-        Map<String, Object> lineage = new LinkedHashMap<>();
-        lineage.put("nodes", Arrays.asList("a", "b"));
-        Assertions.assertFalse(SensitivePropertyUtils.containsSensitivePropertyPayload(lineage));
-        Assertions.assertSame(lineage, SensitivePropertyUtils.maskApiResponseData(lineage));
-    }
-
-    @Test
-    void maskApiResponseDataMasksTaskDefinitionMapWithoutMutatingOriginal() {
+    void copyAndMaskTaskDefinitionMapDoesNotMutateOriginal() {
         TaskDefinition taskDefinition = new TaskDefinition();
         taskDefinition.setTaskParams("{\"localParams\":[{\"prop\":\"token\",\"direct\":\"IN\",\"type\":\"VARCHAR\","
                 + "\"value\":\"abc\",\"sensitive\":true}]}");
         Map<Long, List<TaskDefinition>> map = new LinkedHashMap<>();
         map.put(1L, Collections.singletonList(taskDefinition));
 
-        Assertions.assertTrue(SensitivePropertyUtils.containsSensitivePropertyPayload(map));
-        @SuppressWarnings("unchecked")
-        Map<Long, List<TaskDefinition>> masked =
-                (Map<Long, List<TaskDefinition>>) SensitivePropertyUtils.maskApiResponseData(map);
+        Map<Long, List<TaskDefinition>> masked = SensitivePropertyUtils.copyAndMaskTaskDefinitionMap(map);
 
         Assertions.assertNotSame(map, masked);
         Assertions.assertTrue(masked.get(1L).get(0).getTaskParams().contains(TaskConstants.SENSITIVE_DATA_MASK));
         Assertions.assertTrue(taskDefinition.getTaskParams().contains("abc"));
+    }
+
+    @Test
+    void copyAndMaskTaskInstanceDoesNotMutateOriginal() {
+        TaskInstance taskInstance = new TaskInstance();
+        taskInstance.setTaskParams("{\"localParams\":[{\"prop\":\"token\",\"direct\":\"IN\",\"type\":\"VARCHAR\","
+                + "\"value\":\"abc\",\"sensitive\":true}]}");
+        taskInstance.setVarPool("[{\"prop\":\"pwd\",\"direct\":\"IN\",\"type\":\"VARCHAR\","
+                + "\"value\":\"Secret123\",\"sensitive\":true}]");
+
+        TaskInstance masked = SensitivePropertyUtils.copyAndMaskTaskInstance(taskInstance);
+
+        Assertions.assertTrue(masked.getTaskParams().contains(TaskConstants.SENSITIVE_DATA_MASK));
+        Assertions.assertTrue(masked.getVarPool().contains(TaskConstants.SENSITIVE_DATA_MASK));
+        Assertions.assertTrue(taskInstance.getTaskParams().contains("abc"));
+        Assertions.assertTrue(taskInstance.getVarPool().contains("Secret123"));
+        Assertions.assertNotSame(taskInstance, masked);
+    }
+
+    @Test
+    void copyAndMaskWorkflowInstanceMasksVarPool() {
+        WorkflowInstance persisted = new WorkflowInstance();
+        persisted.setVarPool("[{\"prop\":\"pwd\",\"direct\":\"IN\",\"type\":\"VARCHAR\","
+                + "\"value\":\"Secret123\",\"sensitive\":true}]");
+
+        WorkflowInstance masked = SensitivePropertyUtils.copyAndMaskWorkflowInstance(persisted);
+
+        Assertions.assertTrue(persisted.getVarPool().contains("Secret123"));
+        Assertions.assertTrue(masked.getVarPool().contains(TaskConstants.SENSITIVE_DATA_MASK));
+        Assertions.assertFalse(masked.getVarPool().contains("Secret123"));
     }
 
     private static Property sensitive(String prop, String value) {

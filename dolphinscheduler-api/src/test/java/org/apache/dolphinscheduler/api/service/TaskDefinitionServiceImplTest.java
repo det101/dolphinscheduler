@@ -458,8 +458,8 @@ public class TaskDefinitionServiceImplTest {
         Assertions.assertTrue(fromService.getTaskParams().contains("secret-token"));
         Assertions.assertSame(versionLog, fromService);
 
-        SensitivePropertyUtils.maskApiResponseData(result);
-        TaskDefinitionLog masked = pageInfo.getTotalList().get(0);
+        PageInfo<TaskDefinitionLog> maskedPage = SensitivePropertyUtils.copyAndMaskTaskDefinitionPage(pageInfo);
+        TaskDefinitionLog masked = maskedPage.getTotalList().get(0);
         Assertions.assertTrue(masked.getTaskParams().contains(TaskConstants.SENSITIVE_DATA_MASK));
         Assertions.assertFalse(masked.getTaskParams().contains("secret-token"));
         Assertions.assertTrue(versionLog.getTaskParams().contains("secret-token"));

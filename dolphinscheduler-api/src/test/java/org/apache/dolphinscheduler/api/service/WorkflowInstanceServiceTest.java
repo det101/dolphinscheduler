@@ -806,13 +806,12 @@ public class WorkflowInstanceServiceTest {
         Assertions.assertTrue(persisted.getValue().getGlobalParams().contains("new-secret"));
         Assertions.assertSame(updated, persisted.getValue());
 
-        Result<WorkflowDefinition> response = Result.success(updated);
-        SensitivePropertyUtils.maskApiResponseData(response);
+        WorkflowDefinition masked = SensitivePropertyUtils.copyAndMaskWorkflowDefinition(updated);
 
-        Assertions.assertTrue(response.getData().getGlobalParams().contains(TaskConstants.SENSITIVE_DATA_MASK));
-        Assertions.assertFalse(response.getData().getGlobalParams().contains("new-secret"));
+        Assertions.assertTrue(masked.getGlobalParams().contains(TaskConstants.SENSITIVE_DATA_MASK));
+        Assertions.assertFalse(masked.getGlobalParams().contains("new-secret"));
         Assertions.assertTrue(updated.getGlobalParams().contains("new-secret"));
-        Assertions.assertNotSame(updated, response.getData());
+        Assertions.assertNotSame(updated, masked);
     }
 
     @Test
