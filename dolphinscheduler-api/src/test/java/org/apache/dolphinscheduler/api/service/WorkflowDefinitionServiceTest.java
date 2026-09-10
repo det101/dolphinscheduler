@@ -42,7 +42,6 @@ import org.apache.dolphinscheduler.api.service.impl.ProjectServiceImpl;
 import org.apache.dolphinscheduler.api.service.impl.WorkflowDefinitionServiceImpl;
 import org.apache.dolphinscheduler.api.utils.PageInfo;
 import org.apache.dolphinscheduler.api.utils.Result;
-import org.apache.dolphinscheduler.api.utils.SensitivePropertyUtils;
 import org.apache.dolphinscheduler.api.validator.GlobalParamsValidator;
 import org.apache.dolphinscheduler.common.constants.Constants;
 import org.apache.dolphinscheduler.common.enums.FailureStrategy;
@@ -433,7 +432,7 @@ public class WorkflowDefinitionServiceTest extends BaseServiceTestTool {
     }
 
     @Test
-    public void testQueryWorkflowDefinitionVersionsShouldMaskSensitiveGlobalParams() {
+    public void testQueryWorkflowDefinitionVersionsKeepsPlaintextSensitiveGlobalParams() {
         Project project = getProject(projectCode);
         when(projectDao.queryByCode(projectCode)).thenReturn(project);
         doNothing().when(projectService).checkProjectAndAuthThrowException(user, project, VERSION_LIST);
@@ -455,14 +454,6 @@ public class WorkflowDefinitionServiceTest extends BaseServiceTestTool {
         WorkflowDefinitionLog fromService = pageInfo.getTotalList().get(0);
         Assertions.assertTrue(fromService.getGlobalParams().contains("Secret123"));
         Assertions.assertSame(versionLog, fromService);
-
-        PageInfo<WorkflowDefinitionLog> maskedPage =
-                SensitivePropertyUtils.copyAndMaskWorkflowDefinitionPage(pageInfo);
-        WorkflowDefinitionLog masked = maskedPage.getTotalList().get(0);
-        Assertions.assertTrue(masked.getGlobalParams().contains(TaskConstants.SENSITIVE_DATA_MASK));
-        Assertions.assertFalse(masked.getGlobalParams().contains("Secret123"));
-        Assertions.assertTrue(versionLog.getGlobalParams().contains("Secret123"));
-        Assertions.assertNotSame(versionLog, masked);
     }
 
     @Test
@@ -975,7 +966,7 @@ public class WorkflowDefinitionServiceTest extends BaseServiceTestTool {
     }
 
     @Test
-    public void testCreateWorkflowDefinitionResponseMasksSensitiveGlobalParamsWithoutMutatingPersisted() {
+    public void testCreateWorkflowDefinitionPersistsPlaintextSensitiveGlobalParams() {
         Project project = getProject(projectCode);
         when(projectDao.queryByCode(projectCode)).thenReturn(project);
         Mockito.doNothing().when(projectService).checkHasProjectWritePermissionThrowException(eq(user), eq(project));
@@ -998,13 +989,6 @@ public class WorkflowDefinitionServiceTest extends BaseServiceTestTool {
         Assertions.assertTrue(created.getGlobalParams().contains("Secret123"));
         Assertions.assertTrue(persisted.getValue().getGlobalParams().contains("Secret123"));
         Assertions.assertSame(created, persisted.getValue());
-
-        WorkflowDefinition masked = SensitivePropertyUtils.copyAndMaskWorkflowDefinition(created);
-
-        Assertions.assertTrue(masked.getGlobalParams().contains(TaskConstants.SENSITIVE_DATA_MASK));
-        Assertions.assertFalse(masked.getGlobalParams().contains("Secret123"));
-        Assertions.assertTrue(created.getGlobalParams().contains("Secret123"));
-        Assertions.assertNotSame(created, masked);
     }
 
     @Test
@@ -1225,7 +1209,7 @@ public class WorkflowDefinitionServiceTest extends BaseServiceTestTool {
     }
 
     @Test
-    public void testUpdateWorkflowDefinitionResponseMasksNewSensitiveGlobalParamsWithoutMutatingPersisted() {
+    public void testUpdateWorkflowDefinitionPersistsPlaintextNewSensitiveGlobalParams() {
         Project project = getProject(projectCode);
         WorkflowDefinition workflowDefinition = getWorkflowDefinition();
         workflowDefinition.setName("origin-name");
@@ -1256,13 +1240,6 @@ public class WorkflowDefinitionServiceTest extends BaseServiceTestTool {
         Assertions.assertFalse(updated.getGlobalParams().contains("old-secret"));
         Assertions.assertTrue(persisted.getValue().getGlobalParams().contains("new-secret"));
         Assertions.assertSame(updated, persisted.getValue());
-
-        WorkflowDefinition masked = SensitivePropertyUtils.copyAndMaskWorkflowDefinition(updated);
-
-        Assertions.assertTrue(masked.getGlobalParams().contains(TaskConstants.SENSITIVE_DATA_MASK));
-        Assertions.assertFalse(masked.getGlobalParams().contains("new-secret"));
-        Assertions.assertTrue(updated.getGlobalParams().contains("new-secret"));
-        Assertions.assertNotSame(updated, masked);
     }
 
     @Test

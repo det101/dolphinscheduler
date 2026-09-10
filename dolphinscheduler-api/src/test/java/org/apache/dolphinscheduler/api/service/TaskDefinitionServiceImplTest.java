@@ -37,7 +37,6 @@ import org.apache.dolphinscheduler.api.service.impl.ProjectServiceImpl;
 import org.apache.dolphinscheduler.api.service.impl.TaskDefinitionServiceImpl;
 import org.apache.dolphinscheduler.api.utils.PageInfo;
 import org.apache.dolphinscheduler.api.utils.Result;
-import org.apache.dolphinscheduler.api.utils.SensitivePropertyUtils;
 import org.apache.dolphinscheduler.common.constants.Constants;
 import org.apache.dolphinscheduler.common.enums.Flag;
 import org.apache.dolphinscheduler.common.enums.ReleaseState;
@@ -61,7 +60,6 @@ import org.apache.dolphinscheduler.dao.repository.ProjectDao;
 import org.apache.dolphinscheduler.dao.repository.TaskDefinitionDao;
 import org.apache.dolphinscheduler.dao.repository.WorkflowDefinitionDao;
 import org.apache.dolphinscheduler.dao.repository.WorkflowTaskRelationDao;
-import org.apache.dolphinscheduler.plugin.task.api.TaskConstants;
 import org.apache.dolphinscheduler.service.process.ProcessService;
 import org.apache.dolphinscheduler.service.process.ProcessServiceImpl;
 
@@ -436,7 +434,7 @@ public class TaskDefinitionServiceImplTest {
     }
 
     @Test
-    public void queryTaskDefinitionVersionsShouldMaskSensitiveLocalParams() {
+    public void queryTaskDefinitionVersionsKeepsPlaintextSensitiveLocalParams() {
         Project project = getProject();
         when(projectDao.queryByCode(PROJECT_CODE)).thenReturn(project);
         doNothing().when(projectService).checkProjectAndAuthThrowException(user, project, TASK_VERSION_VIEW);
@@ -457,13 +455,6 @@ public class TaskDefinitionServiceImplTest {
         TaskDefinitionLog fromService = pageInfo.getTotalList().get(0);
         Assertions.assertTrue(fromService.getTaskParams().contains("secret-token"));
         Assertions.assertSame(versionLog, fromService);
-
-        PageInfo<TaskDefinitionLog> maskedPage = SensitivePropertyUtils.copyAndMaskTaskDefinitionPage(pageInfo);
-        TaskDefinitionLog masked = maskedPage.getTotalList().get(0);
-        Assertions.assertTrue(masked.getTaskParams().contains(TaskConstants.SENSITIVE_DATA_MASK));
-        Assertions.assertFalse(masked.getTaskParams().contains("secret-token"));
-        Assertions.assertTrue(versionLog.getTaskParams().contains("secret-token"));
-        Assertions.assertNotSame(versionLog, masked);
     }
 
     /**

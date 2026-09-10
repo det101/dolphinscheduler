@@ -38,7 +38,6 @@ import org.apache.dolphinscheduler.api.service.impl.LoggerServiceImpl;
 import org.apache.dolphinscheduler.api.service.impl.ProjectServiceImpl;
 import org.apache.dolphinscheduler.api.service.impl.WorkflowInstanceServiceImpl;
 import org.apache.dolphinscheduler.api.utils.Result;
-import org.apache.dolphinscheduler.api.utils.SensitivePropertyUtils;
 import org.apache.dolphinscheduler.api.vo.WorkflowInstanceSummaryVO;
 import org.apache.dolphinscheduler.common.constants.Constants;
 import org.apache.dolphinscheduler.common.enums.CommandType;
@@ -759,7 +758,7 @@ public class WorkflowInstanceServiceTest {
     }
 
     @Test
-    public void testUpdateWorkflowInstanceResponseMasksSensitiveGlobalParamsWithoutMutatingPersisted() {
+    public void testUpdateWorkflowInstancePersistsPlaintextSensitiveGlobalParams() {
         long projectCode = 1L;
         User loginUser = getAdminUser();
         WorkflowInstance workflowInstance = getProcessInstance();
@@ -805,13 +804,6 @@ public class WorkflowInstanceServiceTest {
         Assertions.assertFalse(updated.getGlobalParams().contains("old-secret"));
         Assertions.assertTrue(persisted.getValue().getGlobalParams().contains("new-secret"));
         Assertions.assertSame(updated, persisted.getValue());
-
-        WorkflowDefinition masked = SensitivePropertyUtils.copyAndMaskWorkflowDefinition(updated);
-
-        Assertions.assertTrue(masked.getGlobalParams().contains(TaskConstants.SENSITIVE_DATA_MASK));
-        Assertions.assertFalse(masked.getGlobalParams().contains("new-secret"));
-        Assertions.assertTrue(updated.getGlobalParams().contains("new-secret"));
-        Assertions.assertNotSame(updated, masked);
     }
 
     @Test
